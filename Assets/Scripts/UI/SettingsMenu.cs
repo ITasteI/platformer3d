@@ -3,31 +3,13 @@ using UnityEngine;
 
 public class SettingsMenu : MonoBehaviour
 {
-    public static bool IsOpen { get; private set; }
-
-    void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.Escape))
-            SetOpen(!IsOpen);
-
-        if (IsOpen && Input.GetMouseButtonDown(1))
-            SetOpen(false);
-    }
-
-    void SetOpen(bool open)
-    {
-        IsOpen = open;
-        Cursor.lockState = open ? CursorLockMode.None : CursorLockMode.Locked;
-        Cursor.visible = open;
-    }
-
     void OnGUI()
     {
-        if (!IsOpen)
+        if (MainMenu.Current != MenuScreen.Settings)
             return;
 
         float w = 380f;
-        float h = 340f;
+        float h = 380f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
@@ -72,7 +54,7 @@ public class SettingsMenu : MonoBehaviour
         }
         curY += 45f;
 
-        if (GUI.Button(new Rect(x + 20, curY, w - 40, 32), "Weiter spielen"))
-            SetOpen(false);
+        if (GUI.Button(new Rect(x + 20, curY, w - 40, 32), "Zurück"))
+            MainMenu.SetScreen(MenuScreen.Main);
     }
 }

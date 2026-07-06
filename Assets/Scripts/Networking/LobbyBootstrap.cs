@@ -19,7 +19,6 @@ public class LobbyBootstrap : MonoBehaviour
     private readonly ushort port = 7777;
     private string relayJoinCodeInput = "";
     private string statusMessage = "";
-    private bool connected;
 
     void Awake()
     {
@@ -30,17 +29,15 @@ public class LobbyBootstrap : MonoBehaviour
     {
         if (Instance != null && Instance.lobbyCamera != null)
             Instance.lobbyCamera.gameObject.SetActive(false);
-        if (Instance != null)
-            Instance.connected = true;
     }
 
     void OnGUI()
     {
-        if (connected)
+        if (MainMenu.Current != MenuScreen.Play)
             return;
 
         float w = 340f;
-        float h = 260f;
+        float h = 300f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
@@ -65,7 +62,10 @@ public class LobbyBootstrap : MonoBehaviour
         if (GUI.Button(new Rect(x + 30 + (w - 50) / 2, y + 210, (w - 50) / 2, 28), "Relay beitreten"))
             _ = StartRelayJoin();
 
-        GUI.Label(new Rect(x + 20, y + 242, w - 40, 40), statusMessage);
+        GUI.Label(new Rect(x + 20, y + 242, w - 40, 30), statusMessage);
+
+        if (GUI.Button(new Rect(x + 20, y + 266, w - 40, 26), "Zurück"))
+            MainMenu.SetScreen(MenuScreen.Main);
     }
 
     void StartLanHost()

@@ -70,7 +70,11 @@ public class PlayerController : NetworkBehaviour
         bool owner = IsOwner;
 
         if (playerCamera != null)
+        {
             playerCamera.gameObject.SetActive(owner);
+            if (owner)
+                playerCamera.transform.SetParent(null, true);
+        }
         if (audioListener != null)
             audioListener.enabled = owner;
 
@@ -78,6 +82,7 @@ public class PlayerController : NetworkBehaviour
         {
             cameraTransform = playerCamera != null ? playerCamera.transform : null;
             LobbyBootstrap.HideLobbyCamera();
+            MainMenu.NotifyGameStarted();
             if (GameManager.Instance != null)
                 GameManager.Instance.player = transform;
         }
@@ -85,7 +90,7 @@ public class PlayerController : NetworkBehaviour
 
     void Update()
     {
-        if (!IsOwner || SettingsMenu.IsOpen)
+        if (!IsOwner || MainMenu.IsBlockingGameplay)
             return;
 
         float posY = transform.position.y;

@@ -183,6 +183,8 @@ public static class SceneBuilder
     [MenuItem("Tools/Build Test Scene")]
     public static void BuildScene()
     {
+        PlayerSettings.productName = "TasteJump";
+
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
         SetupRenderPipeline();
@@ -686,7 +688,8 @@ public static class SceneBuilder
 
     static void CreateSettingsMenu()
     {
-        var go = new GameObject("SettingsMenu");
+        var go = new GameObject("MainMenu");
+        go.AddComponent<MainMenu>();
         go.AddComponent<SettingsMenu>();
     }
 

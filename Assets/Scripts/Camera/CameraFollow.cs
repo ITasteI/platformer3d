@@ -16,6 +16,8 @@ public class CameraFollow : MonoBehaviour
     private float yaw;
     private float pitch = 20f;
     private Vector3 velocity;
+    private float currentDistance;
+    private float distanceVelocity;
 
     void Start()
     {
@@ -23,11 +25,12 @@ public class CameraFollow : MonoBehaviour
         Cursor.visible = false;
         if (target != null)
             yaw = target.eulerAngles.y;
+        currentDistance = distance;
     }
 
     void Update()
     {
-        if (SettingsMenu.IsOpen)
+        if (MainMenu.IsBlockingGameplay)
             return;
 
         yaw += Input.GetAxis("Mouse X") * mouseSensitivity;
@@ -44,11 +47,12 @@ public class CameraFollow : MonoBehaviour
         Vector3 pivot = target.position + Vector3.up * height;
         Vector3 camDir = -(rotation * Vector3.forward);
 
-        float effectiveDistance = distance;
+        float targetDistance = distance;
         if (Physics.SphereCast(pivot, collisionRadius, camDir, out RaycastHit hit, distance, ~0, QueryTriggerInteraction.Ignore))
-            effectiveDistance = Mathf.Clamp(hit.distance - collisionPadding, minDistance, distance);
+            targetDistance = Mathf.Clamp(hit.distance - collisionPadding, minDistance, distance);
 
-        Vector3 desiredPosition = pivot + camDir * effectiveDistance;
+        currentDistance = Mathf.SmoothDamp(currentDistance, targetDistance, ref distanceVelocity, positionSmoothTime);
+        Vector3 desiredPosition = pivot + camDir * currentDistance;
 
         transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref velocity, positionSmoothTime);
         transform.LookAt(target.position + Vector3.up * (height * 0.5f));
