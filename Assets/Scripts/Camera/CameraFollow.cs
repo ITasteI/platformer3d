@@ -9,6 +9,9 @@ public class CameraFollow : MonoBehaviour
     public float pitchMin = -20f;
     public float pitchMax = 60f;
     public float positionSmoothTime = 0.08f;
+    public float collisionRadius = 0.3f;
+    public float collisionPadding = 0.2f;
+    public float minDistance = 1f;
 
     private float yaw;
     private float pitch = 20f;
@@ -38,7 +41,14 @@ public class CameraFollow : MonoBehaviour
             return;
 
         Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
-        Vector3 desiredPosition = target.position + Vector3.up * height - rotation * Vector3.forward * distance;
+        Vector3 pivot = target.position + Vector3.up * height;
+        Vector3 camDir = -(rotation * Vector3.forward);
+
+        float effectiveDistance = distance;
+        if (Physics.SphereCast(pivot, collisionRadius, camDir, out RaycastHit hit, distance, ~0, QueryTriggerInteraction.Ignore))
+            effectiveDistance = Mathf.Clamp(hit.distance - collisionPadding, minDistance, distance);
+
+        Vector3 desiredPosition = pivot + camDir * effectiveDistance;
 
         transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref velocity, positionSmoothTime);
         transform.LookAt(target.position + Vector3.up * (height * 0.5f));

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class SettingsMenu : MonoBehaviour
@@ -35,11 +36,13 @@ public class SettingsMenu : MonoBehaviour
 
         GUI.Label(new Rect(x + 20, curY, w - 40, 20), "Monitor:");
         curY += 22f;
-        var displays = Display.displays;
-        for (int i = 0; i < displays.Length; i++)
+        var displays = new List<DisplayInfo>();
+        Screen.GetDisplayLayout(displays);
+        for (int i = 0; i < displays.Count; i++)
         {
+            DisplayInfo info = displays[i];
             if (GUI.Button(new Rect(x + 20 + i * 90, curY, 80, 28), "Monitor " + (i + 1)))
-                Screen.MoveMainWindowTo(displays[i], Vector2Int.zero);
+                Screen.MoveMainWindowTo(in info, Vector2Int.zero);
         }
         curY += 40f;
 

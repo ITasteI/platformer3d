@@ -280,6 +280,9 @@ MonoBehaviour:
   pitchMin: -20
   pitchMax: 60
   positionSmoothTime: 0.08
+  collisionRadius: 0.3
+  collisionPadding: 0.2
+  minDistance: 1
 --- !u!1001 &1082239859893713263
 PrefabInstance:
   m_ObjectHideFlags: 0
