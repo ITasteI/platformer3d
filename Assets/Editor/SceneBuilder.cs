@@ -765,18 +765,22 @@ public static class SceneBuilder
         }
         terrainData.SetHeights(0, 0, heights);
 
-        // Darker, dusk-muted grass (new asset name so the color change actually regenerates).
-        Texture2D grassTex = CreateSolidTexture("GrassTerrainDusk", new Color(0.15f, 0.19f, 0.13f), new Color(0.2f, 0.25f, 0.16f));
-        TerrainLayer layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>("Assets/GrassTerrainLayer.asset");
-        if (layer == null)
-        {
-            layer = new TerrainLayer();
-            layer.tileSize = new Vector2(8f, 8f);
-            AssetDatabase.CreateAsset(layer, "Assets/GrassTerrainLayer.asset");
-        }
-        layer.diffuseTexture = grassTex;   // always refresh so tint changes take effect
-        EditorUtility.SetDirty(layer);
-        terrainData.terrainLayers = new[] { layer };
+        // Real tileable ground from the Pure Poly nature pack (grass + dirt, with a shared normal
+        // map for surface relief) instead of the old flat solid-colour grass, so the base of the
+        // world reads as proper terrain. Dirt/pebbles blend in on slopes and along the water.
+        const string PPTex = "Assets/Pure Poly/Free Low Poly Nature Pack/Terrain/Terrain_Textures/";
+        TerrainLayer grassLayer = BuildTerrainLayer("Assets/GrassTerrainLayer.asset",
+            PPTex + "PP_Ground_Green.png", PPTex + "PP_Ground_Normal.png", new Vector2(9f, 9f));
+        TerrainLayer dirtLayer = BuildTerrainLayer("Assets/DirtTerrainLayer.asset",
+            PPTex + "PP_Ground_Mid_Brown.png", PPTex + "PP_Ground_Normal.png", new Vector2(7f, 7f));
+
+        // Fallback so the build still works if the pack is ever removed.
+        if (grassLayer.diffuseTexture == null)
+            grassLayer.diffuseTexture = CreateSolidTexture("GrassTerrainDusk",
+                new Color(0.2f, 0.32f, 0.16f), new Color(0.26f, 0.4f, 0.2f));
+
+        bool hasDirt = dirtLayer.diffuseTexture != null;
+        terrainData.terrainLayers = hasDirt ? new[] { grassLayer, dirtLayer } : new[] { grassLayer };
 
         GameObject terrainGO = Terrain.CreateTerrainGameObject(terrainData);
         terrainGO.name = "Ground";
@@ -784,6 +788,85 @@ public static class SceneBuilder
 
         groundTerrain = terrainGO.GetComponent<Terrain>();
         groundTerrain.allowAutoConnect = false;
+
+        if (hasDirt)
+            PaintGroundSplat(terrainData, heights, size, maxHeight, offsetX, offsetZ);
+    }
+
+    // Builds/refreshes a TerrainLayer asset from a diffuse + normal texture in the project.
+    static TerrainLayer BuildTerrainLayer(string assetPath, string diffusePath, string normalPath, Vector2 tile)
+    {
+        TerrainLayer layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(assetPath);
+        if (layer == null)
+        {
+            layer = new TerrainLayer();
+            AssetDatabase.CreateAsset(layer, assetPath);
+        }
+        layer.tileSize = tile;
+        layer.diffuseTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(diffusePath);
+
+        Texture2D normal = LoadNormalMap(normalPath);
+        if (normal != null)
+        {
+            layer.normalMapTexture = normal;
+            layer.normalScale = 0.6f;
+        }
+        EditorUtility.SetDirty(layer);
+        return layer;
+    }
+
+    // Ensures a texture is imported as a Normal Map before loading it, so terrain lighting is correct.
+    static Texture2D LoadNormalMap(string path)
+    {
+        var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (importer != null && importer.textureType != TextureImporterType.NormalMap)
+        {
+            importer.textureType = TextureImporterType.NormalMap;
+            importer.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
+    // Paints the grass/dirt splatmap: dirt shows on steeper slopes, along the river/lake banks, and
+    // in scattered noise patches; grass everywhere else.
+    static void PaintGroundSplat(TerrainData data, float[,] heights, float size, float maxHeight, float offX, float offZ)
+    {
+        int res = heights.GetLength(0);
+        const int aRes = 256;
+        data.alphamapResolution = aRes;
+        float[,,] splat = new float[aRes, aRes, 2];
+        float spacing = size / (res - 1);
+
+        for (int az = 0; az < aRes; az++)
+        {
+            for (int ax = 0; ax < aRes; ax++)
+            {
+                float u = ax / (float)(aRes - 1);
+                float v = az / (float)(aRes - 1);
+                int hx = Mathf.Clamp(Mathf.RoundToInt(u * (res - 1)), 1, res - 2);
+                int hz = Mathf.Clamp(Mathf.RoundToInt(v * (res - 1)), 1, res - 2);
+
+                float dhx = (heights[hz, hx + 1] - heights[hz, hx - 1]) * maxHeight / (2f * spacing);
+                float dhz = (heights[hz + 1, hx] - heights[hz - 1, hx]) * maxHeight / (2f * spacing);
+                float slope = Mathf.Sqrt(dhx * dhx + dhz * dhz);
+                float slopeW = Mathf.Clamp01((slope - 0.35f) / 0.5f);
+
+                float worldX = (u - 0.5f) * size;
+                float worldZ = (v - 0.5f) * size;
+                float riverW = Mathf.Clamp01(1f - DistanceToRiver(worldX, worldZ, out _) / 9f);
+                float distToLake = Vector2.Distance(new Vector2(worldX, worldZ), new Vector2(LakeCenter.x, LakeCenter.z));
+                float lakeW = Mathf.Clamp01(1f - (distToLake - LakeRadius) / 8f);
+                float bankW = Mathf.Max(riverW, lakeW);
+
+                float patch = Mathf.PerlinNoise(worldX * 0.03f + offX, worldZ * 0.03f + offZ);
+                float patchW = Mathf.Clamp01((patch - 0.62f) / 0.2f) * 0.55f;
+
+                float dirt = Mathf.Clamp01(slopeW + bankW * 0.7f + patchW);
+                splat[az, ax, 0] = 1f - dirt;
+                splat[az, ax, 1] = dirt;
+            }
+        }
+        data.SetAlphamaps(0, 0, splat);
     }
 
     static float SampleTerrainHeight(Vector3 worldPos)
