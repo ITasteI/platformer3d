@@ -784,9 +784,9 @@ public static class SceneBuilder
         var go = new GameObject("MusicManager");
         var music = go.AddComponent<MusicManager>();
         music.topHeight = TopHeight;
-        music.lowZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_low.ogg");
-        music.midZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_mid.ogg");
-        music.highZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_high.ogg");
+        music.lowZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_low.mp3");
+        music.midZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_mid.mp3");
+        music.highZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_high.mp3");
     }
 
     static readonly string[] LowZonePlatforms = { "crate-strong", "crate-item-strong", "pipe", "platform" };
