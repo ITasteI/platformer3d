@@ -164,6 +164,9 @@ MonoBehaviour:
   baseCooldown: 180
   cooldownReductionPerShard: 30
   minCooldown: 30
+  dashSpeed: 18
+  dashDuration: 0.15
+  dashCooldown: 1.5
   cameraTransform: {fileID: 0}
   animator: {fileID: 5569974840928966669}
   playerCamera: {fileID: 8159924509554898986}

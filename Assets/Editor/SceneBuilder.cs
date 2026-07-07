@@ -203,6 +203,7 @@ public static class SceneBuilder
     public static void BuildScene()
     {
         PlayerSettings.productName = "TasteJump";
+        SetGameIcon();
 
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -222,7 +223,11 @@ public static class SceneBuilder
         ParticleSystem stars = CreateStarField();
         CreateGameManager();
         CreateAudioManager();
+        CreateMusicManager();
+        CreateEffectsManager();
         CreateSettingsMenu();
+        CreateWinScreen();
+        CreateTutorialOverlay();
         CreateAtmosphereManager(sunLight, stars);
 
         string scenesDir = Path.Combine(Application.dataPath, "Scenes");
@@ -422,45 +427,25 @@ public static class SceneBuilder
 
     static void CreateGround()
     {
-        GameObject collisionPlane = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        collisionPlane.name = "GroundCollision";
-        collisionPlane.transform.position = Vector3.zero;
-        collisionPlane.transform.localScale = new Vector3(2f, 1f, 2f);
-        collisionPlane.GetComponent<Renderer>().enabled = false;
-
-        GameObject visualRoot = new GameObject("GroundVisual");
-        const int gridSize = 6;
-        const float tileScale = 4f;
-        float half = (gridSize - 1) * tileScale * 0.5f;
-
-        for (int gx = 0; gx < gridSize; gx++)
-        {
-            for (int gz = 0; gz < gridSize; gz++)
-            {
-                Vector3 pos = new Vector3(gx * tileScale - half, 0f, gz * tileScale - half);
-                GameObject tile = InstantiateKenney("block-grass-large", pos);
-                tile.name = "GroundTile";
-                tile.transform.SetParent(visualRoot.transform);
-                tile.transform.localScale = Vector3.one * tileScale;
-                tile.transform.rotation = Quaternion.Euler(0f, ((gx + gz) % 4) * 90f, 0f);
-
-                var renderers = tile.GetComponentsInChildren<Renderer>();
-                if (renderers.Length > 0)
-                {
-                    Bounds bounds = renderers[0].bounds;
-                    foreach (var r in renderers)
-                        bounds.Encapsulate(r.bounds);
-                    float topOffset = bounds.max.y - tile.transform.position.y;
-                    tile.transform.position -= new Vector3(0f, topOffset, 0f);
-                }
-
-                foreach (var col in tile.GetComponentsInChildren<Collider>())
-                    Object.DestroyImmediate(col);
-            }
-        }
+        GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        ground.name = "Ground";
+        ground.transform.position = Vector3.zero;
+        ground.transform.localScale = new Vector3(2f, 1f, 2f);
+        SetColor(ground, new Color(0.36f, 0.4f, 0.3f));
     }
 
     static readonly string[] JunkyardProps = { "crate", "crate-strong", "barrel", "tree-pine", "tree", "rocks" };
+
+    static readonly string[] VegetationModels = { "tree", "tree-pine", "mushrooms", "plant", "flowers", "flag" };
+    static bool IsVegetation(string modelName) => System.Array.IndexOf(VegetationModels, modelName) >= 0;
+
+    static void ApplyDecorFlags(GameObject obj, string modelName)
+    {
+        if (IsVegetation(modelName))
+            obj.AddComponent<WindSway>();
+        else
+            obj.isStatic = true;
+    }
 
     static void CreateJunkyardDecor()
     {
@@ -476,7 +461,7 @@ public static class SceneBuilder
             prop.name = "JunkProp_" + i;
             prop.transform.SetParent(decor.transform);
             prop.transform.rotation = Quaternion.Euler(0f, i * 23f, 0f);
-            prop.isStatic = true;
+            ApplyDecorFlags(prop, propName);
         }
     }
 
@@ -503,12 +488,12 @@ public static class SceneBuilder
     {
         GameObject cityRoot = new GameObject("CitySkyline");
 
-        CreateBuildingRing(cityRoot.transform, SkyscraperNames, 16, 24f, 34f, 1.2f, 2.0f);
-        CreateBuildingRing(cityRoot.transform, BuildingNames, 24, 36f, 48f, 0.8f, 1.3f);
-        CreateBuildingRing(cityRoot.transform, LowDetailNames, 28, 50f, 70f, 0.9f, 1.6f);
+        CreateBuildingRing(cityRoot.transform, SkyscraperNames, 16, 24f, 34f, 1.2f, 2.0f, 220f);
+        CreateBuildingRing(cityRoot.transform, BuildingNames, 24, 36f, 48f, 0.8f, 1.3f, 160f);
+        CreateBuildingRing(cityRoot.transform, LowDetailNames, 28, 50f, 70f, 0.9f, 1.6f, 100f);
     }
 
-    static void CreateBuildingRing(Transform parent, string[] names, int count, float radiusMin, float radiusMax, float scaleMin, float scaleMax)
+    static void CreateBuildingRing(Transform parent, string[] names, int count, float radiusMin, float radiusMax, float scaleMin, float scaleMax, float cullDistance)
     {
         for (int i = 0; i < count; i++)
         {
@@ -521,6 +506,7 @@ public static class SceneBuilder
             building.transform.SetParent(parent);
             building.transform.rotation = Quaternion.Euler(0f, (i * 47f) % 360f, 0f);
             building.isStatic = true;
+            building.AddComponent<DistanceCuller>().maxDistance = cullDistance;
 
             float scale = Mathf.Lerp(scaleMin, scaleMax, Mathf.Abs(Mathf.Sin(i * 12.9898f)));
             building.transform.localScale = Vector3.one * scale;
@@ -543,6 +529,7 @@ public static class SceneBuilder
             GameObject cloud = new GameObject("Cloud_" + i);
             cloud.transform.SetParent(cloudRoot.transform);
             cloud.transform.position = center;
+            cloud.AddComponent<DistanceCuller>().maxDistance = 130f;
 
             int puffCount = 4 + (i % 3);
             for (int p = 0; p < puffCount; p++)
@@ -578,6 +565,8 @@ public static class SceneBuilder
         Vector3 prevPos = new Vector3(0f, 0.5f, 0f);
         Vector3 lastPos = prevPos;
         float angle = 0f;
+        bool gate1Placed = false;
+        bool gate2Placed = false;
 
         for (int i = 0; i < PlatformCount; i++)
         {
@@ -661,11 +650,31 @@ public static class SceneBuilder
             if (i % 3 == 1 && !isCheckpoint)
                 CreateClimbDecor(pos, i, t);
 
+            if (!gate1Placed && t >= 0.33f)
+            {
+                CreateWorldGate(pos, GameManager.GetWorldName(t));
+                gate1Placed = true;
+            }
+            else if (!gate2Placed && t >= 0.66f)
+            {
+                CreateWorldGate(pos, GameManager.GetWorldName(t));
+                gate2Placed = true;
+            }
+
             prevPos = pos;
             lastPos = pos;
         }
 
         return lastPos;
+    }
+
+    static void CreateWorldGate(Vector3 pos, string worldName)
+    {
+        GameObject gate = InstantiateKenney("door-rotate-large", pos + new Vector3(0f, 1.5f, 0f));
+        gate.name = "WorldGate_" + worldName;
+        gate.transform.localScale = Vector3.one * 2.5f;
+        foreach (var col in gate.GetComponentsInChildren<Collider>())
+            Object.DestroyImmediate(col);
     }
 
     static readonly string[] LowZoneDecor = { "rocks", "mushrooms", "plant", "fence-broken" };
@@ -684,7 +693,7 @@ public static class SceneBuilder
         decor.name = "ClimbDecor_" + index;
         decor.transform.rotation = Quaternion.Euler(0f, index * 41f, 0f);
         decor.transform.localScale = Vector3.one * 0.8f;
-        decor.isStatic = true;
+        ApplyDecorFlags(decor, modelName);
 
         foreach (var col in decor.GetComponentsInChildren<Collider>())
             Object.DestroyImmediate(col);
@@ -707,6 +716,77 @@ public static class SceneBuilder
         GameObject flag = InstantiateKenney("flag", topPlatformPos + new Vector3(0f, 0.9f, 0f));
         flag.name = "GoalFlag";
         flag.transform.localScale = Vector3.one * 1.5f;
+        flag.AddComponent<WindSway>();
+
+        BoxCollider trigger = flag.AddComponent<BoxCollider>();
+        trigger.isTrigger = true;
+        trigger.size = new Vector3(2.5f, 3f, 2.5f);
+        flag.AddComponent<GoalTrigger>();
+    }
+
+    static void CreateWinScreen()
+    {
+        var go = new GameObject("WinScreen");
+        go.AddComponent<WinScreen>();
+    }
+
+    static void CreateEffectsManager()
+    {
+        var go = new GameObject("EffectsManager");
+        var effects = go.AddComponent<EffectsManager>();
+
+        effects.dustTemplate = BuildBurstParticle("DustTemplate", new Color(0.6f, 0.5f, 0.4f), 10, 0.3f, 0.6f);
+        effects.dustTemplate.transform.SetParent(go.transform);
+        effects.dustTemplate.gameObject.SetActive(false);
+
+        effects.sparkleTemplate = BuildBurstParticle("SparkleTemplate", new Color(1f, 0.85f, 0.3f), 14, 0.2f, 0.5f);
+        effects.sparkleTemplate.transform.SetParent(go.transform);
+        effects.sparkleTemplate.gameObject.SetActive(false);
+    }
+
+    static ParticleSystem BuildBurstParticle(string name, Color color, int burstCount, float size, float lifetime)
+    {
+        GameObject go = new GameObject(name);
+        var ps = go.AddComponent<ParticleSystem>();
+
+        var main = ps.main;
+        main.duration = 0.5f;
+        main.loop = false;
+        main.startLifetime = lifetime;
+        main.startSpeed = 3f;
+        main.startSize = size;
+        main.startColor = color;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0f;
+        emission.SetBursts(new[] { new ParticleSystem.Burst(0f, (short)burstCount) });
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = 0.3f;
+
+        var renderer = go.GetComponent<ParticleSystemRenderer>();
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+        var mat = new Material(shader);
+        if (mat.HasProperty("_BaseColor"))
+            mat.SetColor("_BaseColor", color);
+        renderer.material = mat;
+
+        ps.Stop();
+        return ps;
+    }
+
+    static void CreateMusicManager()
+    {
+        var go = new GameObject("MusicManager");
+        var music = go.AddComponent<MusicManager>();
+        music.topHeight = TopHeight;
+        music.lowZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_low.ogg");
+        music.midZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_mid.ogg");
+        music.highZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_high.ogg");
     }
 
     static readonly string[] LowZonePlatforms = { "crate-strong", "crate-item-strong", "pipe", "platform" };
@@ -831,11 +911,36 @@ public static class SceneBuilder
         audio.clickClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "click.ogg");
     }
 
+    static void SetGameIcon()
+    {
+        Texture2D icon = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Icon/icon.jpg");
+        if (icon == null)
+            return;
+
+        int standaloneCount = PlayerSettings.GetIconSizesForTargetGroup(BuildTargetGroup.Standalone).Length;
+        var standaloneIcons = new Texture2D[Mathf.Max(1, standaloneCount)];
+        for (int i = 0; i < standaloneIcons.Length; i++)
+            standaloneIcons[i] = icon;
+        PlayerSettings.SetIconsForTargetGroup(BuildTargetGroup.Standalone, standaloneIcons);
+
+        int defaultCount = PlayerSettings.GetIconSizesForTargetGroup(BuildTargetGroup.Unknown).Length;
+        var defaultIcons = new Texture2D[Mathf.Max(1, defaultCount)];
+        for (int i = 0; i < defaultIcons.Length; i++)
+            defaultIcons[i] = icon;
+        PlayerSettings.SetIconsForTargetGroup(BuildTargetGroup.Unknown, defaultIcons);
+    }
+
     static void CreateSettingsMenu()
     {
         var go = new GameObject("MainMenu");
         go.AddComponent<MainMenu>();
         go.AddComponent<SettingsMenu>();
+    }
+
+    static void CreateTutorialOverlay()
+    {
+        var go = new GameObject("TutorialOverlay");
+        go.AddComponent<TutorialOverlay>();
     }
 
     static void CreateAtmosphereManager(Light sunLight, ParticleSystem stars)

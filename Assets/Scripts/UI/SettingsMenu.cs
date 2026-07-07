@@ -19,6 +19,9 @@ public class SettingsMenu : MonoBehaviour
 
         UITheme.EnsureInit();
 
+        Color prevColor = GUI.color;
+        GUI.color = new Color(1f, 1f, 1f, MainMenu.FadeAlpha);
+
         float w = 380f;
         float h = 420f;
         float x = (Screen.width - w) / 2f;
@@ -77,10 +80,12 @@ public class SettingsMenu : MonoBehaviour
         }
         curY += 45f;
 
-        if (GUI.Button(new Rect(x + 20, curY, w - 40, 32), "Zurück", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 20, curY, w - 40, 32), "↩ Zurück", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             MainMenu.SetScreen(MenuScreen.Main);
         }
+
+        GUI.color = prevColor;
     }
 }

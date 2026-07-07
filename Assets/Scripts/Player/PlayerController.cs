@@ -31,6 +31,11 @@ public class PlayerController : NetworkBehaviour
     public float cooldownReductionPerShard = 30f;
     public float minCooldown = 30f;
 
+    [Header("Dash")]
+    public float dashSpeed = 18f;
+    public float dashDuration = 0.15f;
+    public float dashCooldown = 1.5f;
+
     [Header("References")]
     public Transform cameraTransform;
     public Animator animator;
@@ -59,6 +64,9 @@ public class PlayerController : NetworkBehaviour
     private bool wasGrounded;
     private float footstepTimer;
     private const float FootstepInterval = 0.35f;
+    private float dashTimer;
+    private float dashCooldownTimer;
+    private Vector3 dashDirection;
 
     void Awake()
     {
@@ -94,6 +102,7 @@ public class PlayerController : NetworkBehaviour
             cameraTransform = playerCamera != null ? playerCamera.transform : null;
             LobbyBootstrap.HideLobbyCamera();
             MainMenu.NotifyGameStarted();
+            TutorialOverlay.ShowIfFirstTime();
             if (GameManager.Instance != null)
                 GameManager.Instance.player = transform;
         }
@@ -101,7 +110,7 @@ public class PlayerController : NetworkBehaviour
 
     void Update()
     {
-        if (!IsOwner || MainMenu.IsBlockingGameplay)
+        if (!IsOwner || MainMenu.IsBlockingGameplay || WinScreen.HasWon || TutorialOverlay.IsVisible)
             return;
 
         float posY = transform.position.y;
@@ -118,7 +127,11 @@ public class PlayerController : NetworkBehaviour
         HandleGroundState();
         HandleJumpInput();
         HandleFlyAbility();
-        HandleMovement();
+        HandleDash();
+
+        if (dashTimer <= 0f)
+            HandleMovement();
+
         ApplyGravity();
         HandleAnimation();
     }
@@ -126,11 +139,45 @@ public class PlayerController : NetworkBehaviour
     public void Die()
     {
         AudioManager.Instance?.PlayDeath();
+        EffectsManager.Instance?.PlayDust(transform.position);
         controller.enabled = false;
         transform.position = checkpoint;
         controller.enabled = true;
         velocity = Vector3.zero;
         highestY = checkpoint.y;
+    }
+
+    Vector3 GetWorldInputDir()
+    {
+        float inputX = Input.GetAxisRaw("Horizontal");
+        float inputZ = Input.GetAxisRaw("Vertical");
+        Vector3 inputDir = new Vector3(inputX, 0f, inputZ).normalized;
+        if (inputDir.magnitude < 0.1f)
+            return Vector3.zero;
+
+        float camYaw = cameraTransform != null ? cameraTransform.eulerAngles.y : 0f;
+        return Quaternion.Euler(0f, camYaw, 0f) * inputDir;
+    }
+
+    void HandleDash()
+    {
+        if (dashCooldownTimer > 0f)
+            dashCooldownTimer -= Time.deltaTime;
+
+        if (Input.GetKeyDown(KeyCode.LeftShift) && dashCooldownTimer <= 0f && dashTimer <= 0f)
+        {
+            Vector3 dir = GetWorldInputDir();
+            dashDirection = dir.magnitude > 0.1f ? dir : transform.forward;
+            dashTimer = dashDuration;
+            dashCooldownTimer = dashCooldown;
+            EffectsManager.Instance?.PlayDust(transform.position);
+        }
+
+        if (dashTimer > 0f)
+        {
+            dashTimer -= Time.deltaTime;
+            controller.Move(dashDirection * dashSpeed * Time.deltaTime);
+        }
     }
 
     void HandleAnimation()
@@ -177,7 +224,7 @@ public class PlayerController : NetworkBehaviour
 
     void OnGUI()
     {
-        if (!IsOwner || MainMenu.IsBlockingGameplay)
+        if (!IsOwner || MainMenu.IsBlockingGameplay || WinScreen.HasWon)
             return;
 
         UITheme.EnsureInit();
@@ -195,7 +242,10 @@ public class PlayerController : NetworkBehaviour
                 velocity.y = -2f;
 
             if (!wasGrounded)
+            {
                 AudioManager.Instance?.PlayLand();
+                EffectsManager.Instance?.PlayDust(transform.position);
+            }
 
             if (currentSpeed > 0.1f)
             {
@@ -232,20 +282,16 @@ public class PlayerController : NetworkBehaviour
             jumpBufferTimer = 0f;
             coyoteTimer = 0f;
             AudioManager.Instance?.PlayJump();
+            EffectsManager.Instance?.PlayDust(transform.position);
         }
     }
 
     void HandleMovement()
     {
-        float inputX = Input.GetAxisRaw("Horizontal");
-        float inputZ = Input.GetAxisRaw("Vertical");
-        Vector3 inputDir = new Vector3(inputX, 0f, inputZ).normalized;
+        Vector3 moveDir = GetWorldInputDir();
 
-        if (inputDir.magnitude >= 0.1f)
+        if (moveDir.magnitude >= 0.1f)
         {
-            float camYaw = cameraTransform != null ? cameraTransform.eulerAngles.y : 0f;
-            Vector3 moveDir = Quaternion.Euler(0f, camYaw, 0f) * inputDir;
-
             Quaternion targetRotation = Quaternion.LookRotation(moveDir);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
 

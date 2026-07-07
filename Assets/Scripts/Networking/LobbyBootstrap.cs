@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Unity.Networking.Transport.Relay;
 using Unity.Netcode;
@@ -19,10 +20,62 @@ public class LobbyBootstrap : MonoBehaviour
     private readonly ushort port = 7777;
     private string relayJoinCodeInput = "";
     private string statusMessage = "";
+    private bool wasConnected;
+
+    private class Toast
+    {
+        public string Message;
+        public float ExpiryTime;
+    }
+
+    private readonly List<Toast> toasts = new List<Toast>();
 
     void Awake()
     {
         Instance = this;
+
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnected;
+        }
+    }
+
+    void OnClientConnected(ulong clientId)
+    {
+        wasConnected = true;
+        bool isSelf = NetworkManager.Singleton != null && clientId == NetworkManager.Singleton.LocalClientId;
+        if (!isSelf)
+            ShowToast("Spieler beigetreten");
+    }
+
+    void OnClientDisconnected(ulong clientId)
+    {
+        bool isSelf = NetworkManager.Singleton != null && clientId == NetworkManager.Singleton.LocalClientId;
+        if (isSelf && wasConnected)
+        {
+            wasConnected = false;
+            ShowToast("Verbindung verloren");
+            MainMenu.ReturnToMainAfterDisconnect();
+        }
+        else if (!isSelf)
+        {
+            ShowToast("Spieler getrennt");
+        }
+    }
+
+    void ShowToast(string message)
+    {
+        toasts.Add(new Toast { Message = message, ExpiryTime = Time.time + 3f });
     }
 
     public static void HideLobbyCamera()
@@ -33,13 +86,18 @@ public class LobbyBootstrap : MonoBehaviour
 
     void OnGUI()
     {
+        DrawToasts();
+
         if (MainMenu.Current != MenuScreen.Play)
             return;
 
         UITheme.EnsureInit();
 
+        Color prevColor = GUI.color;
+        GUI.color = new Color(1f, 1f, 1f, MainMenu.FadeAlpha);
+
         float w = 340f;
-        float h = 340f;
+        float h = 370f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
@@ -67,10 +125,42 @@ public class LobbyBootstrap : MonoBehaviour
 
         GUI.Label(new Rect(x + 20, y + 258, w - 40, 30), statusMessage, UITheme.LabelStyle);
 
-        if (GUI.Button(new Rect(x + 20, y + 295, w - 40, 30), "Zurück", UITheme.ButtonStyle))
+        var hintStyle = new GUIStyle(UITheme.LabelStyle) { fontSize = 11 };
+        GUI.Label(new Rect(x + 20, y + 288, w - 40, 32), "Hinweis: Shards werden pro Spieler getrennt gezählt.", hintStyle);
+
+        if (GUI.Button(new Rect(x + 20, y + 325, w - 40, 30), "↩ Zurück", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             MainMenu.SetScreen(MenuScreen.Main);
+        }
+
+        GUI.color = prevColor;
+    }
+
+    void DrawToasts()
+    {
+        if (toasts.Count == 0)
+            return;
+
+        UITheme.EnsureInit();
+        float y = 20f;
+        for (int i = toasts.Count - 1; i >= 0; i--)
+        {
+            if (Time.time > toasts[i].ExpiryTime)
+            {
+                toasts.RemoveAt(i);
+                continue;
+            }
+        }
+
+        foreach (var toast in toasts)
+        {
+            float alpha = Mathf.Clamp01(toast.ExpiryTime - Time.time);
+            Color prev = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, alpha);
+            GUI.Box(new Rect(Screen.width - 260, y, 240, 32), toast.Message, UITheme.PanelStyle);
+            GUI.color = prev;
+            y += 38f;
         }
     }
 

@@ -16,6 +16,7 @@ public class Checkpoint : MonoBehaviour
         {
             activated = true;
             AudioManager.Instance?.PlayCheckpoint();
+            EffectsManager.Instance?.PlaySparkle(transform.position);
         }
     }
 }

@@ -30,7 +30,7 @@ public class CameraFollow : MonoBehaviour
 
     void Update()
     {
-        if (MainMenu.IsBlockingGameplay)
+        if (MainMenu.IsBlockingGameplay || WinScreen.HasWon || TutorialOverlay.IsVisible)
             return;
 
         yaw += Input.GetAxis("Mouse X") * mouseSensitivity;
