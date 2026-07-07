@@ -34,6 +34,9 @@ public class WinScreen : MonoBehaviour
         if (isNewBest)
             bestTime = finishTime;
 
+        // Persist this run as the ghost to race against, but only if it beat the previous best.
+        GhostRunner.Instance?.OnWin(isNewBest);
+
         AudioManager.Instance?.PlayVictory();
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;

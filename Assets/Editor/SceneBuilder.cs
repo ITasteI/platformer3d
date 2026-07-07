@@ -289,6 +289,7 @@ public static class SceneBuilder
         CreateEffectsManager();
         CreateSettingsMenu();
         CreateWinScreen();
+        CreateGhostRunner();
         CreateTutorialOverlay();
         CreateAtmosphereManager(sunLight, stars, weather);
 
@@ -1897,6 +1898,12 @@ public static class SceneBuilder
     {
         var go = new GameObject("WinScreen");
         go.AddComponent<WinScreen>();
+    }
+
+    static void CreateGhostRunner()
+    {
+        var go = new GameObject("GhostRunner");
+        go.AddComponent<GhostRunner>();
     }
 
     static void CreateEffectsManager()

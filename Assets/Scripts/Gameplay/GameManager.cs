@@ -205,6 +205,22 @@ public class GameManager : MonoBehaviour
             UITheme.Rect(new Rect(pr.x + 12, pr.y + 11, 14, 14), UITheme.Accent);
             GUI.Label(new Rect(pr.x + 34, pr.y + 5, 110, 26), $"Spieler: {players}", UITheme.HudStyle);
         }
+
+        // Best-time ghost pace: how far ahead/behind your best run you are right now. Ghost above
+        // you = your best self was higher at this time = you're behind; ghost below = you're ahead.
+        if (player != null && GhostRunner.Instance != null && GhostRunner.Instance.GhostVisible)
+        {
+            float lead = player.position.y - GhostRunner.Instance.GhostHeight;
+            bool ahead = lead >= 0f;
+            Rect gr = new Rect(Screen.width - 168, players > 1 ? 56 : 16, 150, 34);
+            GUI.Box(gr, "", UITheme.PillStyle);
+            Color accent = ahead ? UITheme.Positive : new Color(0.95f, 0.5f, 0.5f);
+            UITheme.Rect(new Rect(gr.x + 12, gr.y + 11, 14, 14), accent);
+            var gStyle = new GUIStyle(UITheme.HudStyle);
+            gStyle.normal.textColor = accent;
+            string label = ahead ? $"+{lead:0}m voraus" : $"-{-lead:0}m zurück";
+            GUI.Label(new Rect(gr.x + 34, gr.y + 5, 120, 26), label, gStyle);
+        }
     }
 
     static void DrawChip(Rect r, Color accent, string text)
