@@ -9,6 +9,29 @@ public class MusicManager : MonoBehaviour
     public float volume = 0.4f;
     public float crossfade = 5f;
 
+    // Separate, live-adjustable music volume (persisted), independent of SFX. Settings writes it.
+    const string MusicPrefKey = "MusicVolume";
+    static float musicScale = -1f;
+
+    public static float MusicVolume
+    {
+        get
+        {
+            if (musicScale < 0f)
+                musicScale = PlayerPrefs.GetFloat(MusicPrefKey, 1f);
+            return musicScale;
+        }
+    }
+
+    public static void SetMusicVolume(float value)
+    {
+        musicScale = Mathf.Clamp01(value);
+        PlayerPrefs.SetFloat(MusicPrefKey, musicScale);
+    }
+
+    // Effective output volume = base track volume * user music setting.
+    private float Vol => volume * MusicVolume;
+
     private AudioSource a;
     private AudioSource b;
     private AudioSource active;
@@ -33,7 +56,7 @@ public class MusicManager : MonoBehaviour
         if (loopClip == null)
             return;
         active.clip = loopClip;
-        active.volume = volume;
+        active.volume = Vol;
         active.time = 0f;
         active.Play();
     }
@@ -47,6 +70,7 @@ public class MusicManager : MonoBehaviour
 
         if (!crossfading)
         {
+            active.volume = Vol; // apply live music-volume changes while a single track plays
             float remaining = loopClip.length - active.time;
             if (active.isPlaying && remaining <= fade)
             {
@@ -62,15 +86,15 @@ public class MusicManager : MonoBehaviour
         {
             AudioSource next = active == a ? b : a;
             float p = Mathf.Clamp01(next.time / fade);
-            active.volume = volume * (1f - p);
-            next.volume = volume * p;
+            active.volume = Vol * (1f - p);
+            next.volume = Vol * p;
 
             if (p >= 1f)
             {
                 active.Stop();
                 active.volume = 0f;
                 active = next;
-                active.volume = volume;
+                active.volume = Vol;
                 crossfading = false;
             }
         }

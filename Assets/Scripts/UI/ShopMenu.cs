@@ -10,6 +10,20 @@ public class ShopMenu : MonoBehaviour
     private Vector2 scroll;
     private Vector2 invScroll;
     private string status = "";
+    private float statusTime;
+    private bool statusGood;
+
+    // What the live preview shows: defaults to the equipped loadout each frame, overridden by the
+    // item row under the mouse so you can try before you buy.
+    private string hoverSkin;
+    private string hoverEffect;
+
+    void SetStatus(string message, bool good)
+    {
+        status = message;
+        statusGood = good;
+        statusTime = Time.time;
+    }
 
     void OnGUI()
     {
@@ -18,26 +32,31 @@ public class ShopMenu : MonoBehaviour
 
         UITheme.EnsureInit();
 
-        float w = 560f;
-        float h = 470f;
+        float w = 800f;
+        float h = 500f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
+        const float leftW = 500f; // left column (list) region width; preview fills the rest
 
         GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
-        GUI.Label(new Rect(x, y + 12, w, 34), "Shop", UITheme.TitleStyle);
+        GUI.Label(new Rect(x, y + 12, leftW, 34), "Shop", UITheme.TitleStyle);
 
         // Coin balance, top-right.
         GUI.Box(new Rect(x + w - 170, y + 16, 150, 30), "", UITheme.PillStyle);
         UITheme.Rect(new Rect(x + w - 160, y + 24, 14, 14), UITheme.Gold);
         GUI.Label(new Rect(x + w - 140, y + 18, 120, 26), EconomySystem.Coins.ToString(), UITheme.CoinStyle);
 
-        // Tabs.
-        float tabW = (w - 60) / 3f;
+        // Tabs (left column).
+        float tabW = (leftW - 60) / 3f;
         DrawTab(new Rect(x + 20, y + 52, tabW, 32), "Skins", Tab.Skins);
         DrawTab(new Rect(x + 30 + tabW, y + 52, tabW, 32), "Effekte", Tab.Effects);
-        DrawTab(new Rect(x + 40 + tabW * 2, y + 52, tabW, 32), "Meine Gegenstände", Tab.Inventory);
+        DrawTab(new Rect(x + 40 + tabW * 2, y + 52, tabW, 32), "Inventar", Tab.Inventory);
 
-        Rect listArea = new Rect(x + 20, y + 94, w - 40, h - 150);
+        // Preview defaults to the equipped loadout; item rows override on hover.
+        hoverSkin = EconomySystem.EquippedSkin;
+        hoverEffect = EconomySystem.EquippedEffect;
+
+        Rect listArea = new Rect(x + 20, y + 94, leftW - 40, h - 150);
         if (tab == Tab.Skins)
             DrawSkinList(listArea, false);
         else if (tab == Tab.Effects)
@@ -45,14 +64,63 @@ public class ShopMenu : MonoBehaviour
         else
             DrawInventory(listArea);
 
+        DrawPreview(new Rect(x + leftW + 4, y + 52, w - leftW - 24, h - 108));
+
         if (status.Length > 0)
-            GUI.Label(new Rect(x + 20, y + h - 52, w - 200, 22), status, UITheme.LabelStyle);
+        {
+            float a = Mathf.Clamp01(3f - (Time.time - statusTime)); // hold ~2s, then fade
+            var st = new GUIStyle(UITheme.LabelStyle) { fontStyle = FontStyle.Bold };
+            st.normal.textColor = statusGood ? UITheme.Positive : UITheme.Danger;
+            Color prev = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, a);
+            GUI.Label(new Rect(x + 20, y + h - 52, leftW - 40, 22), status, st);
+            GUI.color = prev;
+        }
 
         if (GUI.Button(new Rect(x + w - 150, y + h - 52, 130, 32), "↩ Zurück", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             MainMenu.SetScreen(MenuScreen.Main);
         }
+    }
+
+    // Right-column live preview: draws the rotating preview character (RenderTexture) with the
+    // hovered skin/effect applied, plus what's being shown vs. currently equipped.
+    void DrawPreview(Rect box)
+    {
+        GUI.Box(box, "", UITheme.CardStyle);
+        GUI.Label(new Rect(box.x + 12, box.y + 8, box.width - 24, 22), "Vorschau", UITheme.SubtitleStyle);
+
+        var preview = CosmeticPreview.Instance;
+        if (preview != null)
+            preview.SetPreview(hoverSkin, hoverEffect);
+
+        float tw = box.width - 40f;
+        float th = tw * (430f / 320f);
+        float maxTh = box.height - 118f;
+        if (th > maxTh)
+        {
+            th = maxTh;
+            tw = th * (320f / 430f);
+        }
+        Rect rt = new Rect(box.x + (box.width - tw) / 2f, box.y + 36, tw, th);
+
+        if (preview != null && preview.Texture != null)
+            GUI.DrawTexture(rt, preview.Texture, ScaleMode.ScaleToFit, false);
+        else
+            GUI.Label(rt, "(keine Vorschau)", UITheme.LabelStyle);
+
+        CosmeticsCatalog.TryGetSkin(hoverSkin, out SkinDef sk);
+        CosmeticsCatalog.TryGetEffect(hoverEffect, out EffectDef ef);
+        float ly = rt.yMax + 8f;
+        GUI.Label(new Rect(box.x + 14, ly, box.width - 24, 20), "Skin: " + sk.Name, UITheme.SubtitleStyle);
+        GUI.Label(new Rect(box.x + 14, ly + 24, box.width - 24, 20), "Effekt: " + ef.Name, UITheme.SubtitleStyle);
+
+        CosmeticsCatalog.TryGetSkin(EconomySystem.EquippedSkin, out SkinDef esk);
+        CosmeticsCatalog.TryGetEffect(EconomySystem.EquippedEffect, out EffectDef eef);
+        var small = new GUIStyle(UITheme.LabelStyle) { fontSize = 12 };
+        small.normal.textColor = new Color(0.72f, 0.74f, 0.8f);
+        GUI.Label(new Rect(box.x + 14, ly + 48, box.width - 24, 18), $"Aktuell: {esk.Name} + {eef.Name}", small);
     }
 
     void DrawTab(Rect r, string label, Tab t)
@@ -148,6 +216,13 @@ public class ShopMenu : MonoBehaviour
 
     void DrawItemRow(Rect r, string name, int price, Color swatch, bool emissive, string id, bool isSkin, string equippedId)
     {
+        // Hovering a row drives the live preview (coords are content-local inside the scroll view).
+        if (r.Contains(Event.current.mousePosition))
+        {
+            if (isSkin) hoverSkin = id;
+            else hoverEffect = id;
+        }
+
         GUI.Box(r, "", UITheme.CardStyle);
 
         // Color swatch.
@@ -194,12 +269,13 @@ public class ShopMenu : MonoBehaviour
         if (EconomySystem.TryPurchase(id, price, isSkin))
         {
             AudioManager.Instance?.PlayCoin();
-            status = name + " gekauft!";
+            SetStatus(name + " gekauft und ausgerüstet!", true);
             Equip(id, isSkin);
         }
         else
         {
-            status = "Nicht genug Coins für " + name + ".";
+            AudioManager.Instance?.PlayClick();
+            SetStatus("Nicht genug Münzen für " + name + ".", false);
         }
     }
 

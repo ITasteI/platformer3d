@@ -76,6 +76,8 @@ public class PlayerController : NetworkBehaviour
     private float cooldownRemaining;
     private float currentSpeed;
     private Vector3 horizontalVel;
+    private bool wasAbilityReady = true;
+    private float abilityReadyFlash;
     private Vector3 spawnPoint;
     private Vector3 checkpoint;
     private bool wasGrounded;
@@ -209,6 +211,17 @@ public class PlayerController : NetworkBehaviour
 
         ApplyPlatformMotion();
         HandleAnimation();
+
+        // Ability-ready feedback: chime + brief flash the moment the extra jump finishes cooling down.
+        bool ready = AbilityReady;
+        if (ready && !wasAbilityReady)
+        {
+            AudioManager.Instance?.PlayAbilityReady();
+            abilityReadyFlash = 1f;
+        }
+        wasAbilityReady = ready;
+        if (abilityReadyFlash > 0f)
+            abilityReadyFlash = Mathf.MoveTowards(abilityReadyFlash, 0f, Time.deltaTime * 1.4f);
     }
 
     void HandleAdminFly()
@@ -373,11 +386,31 @@ public class PlayerController : NetworkBehaviour
             return;
 
         UITheme.EnsureInit();
-        // Below the GameManager HUD (coin/time/height chips + zone bar occupy y≈16..178).
-        string status = AbilityReady ? "Extra-Sprung (Q): bereit" : $"Extra-Sprung (Q): {CooldownRemaining:0}s";
-        var flyStyle = new GUIStyle(UITheme.LabelStyle) { fontSize = 15, fontStyle = FontStyle.Bold };
-        flyStyle.normal.textColor = AbilityReady ? UITheme.Positive : new Color(0.8f, 0.8f, 0.85f);
-        GUI.Label(new Rect(22, 188, 300, 24), status, flyStyle);
+
+        // Ability chip below the GameManager HUD (which occupies y≈16..178): icon + label, a
+        // right-aligned state ("Bereit"/"Xs"), and a recharge bar so the cooldown is readable at a
+        // glance. Pulses/brightens the moment it becomes ready.
+        bool ready = AbilityReady;
+        float frac = ready ? 1f : Mathf.Clamp01(1f - CooldownRemaining / Mathf.Max(0.01f, extraJumpCooldown));
+        Color accent = ready ? UITheme.Positive : UITheme.Accent;
+        if (abilityReadyFlash > 0f)
+            accent = Color.Lerp(accent, Color.white, abilityReadyFlash * 0.7f);
+
+        Rect chip = new Rect(18, 188, 214, 44);
+        GUI.Box(chip, "", UITheme.PillStyle);
+
+        float pulse = ready ? (1f + Mathf.Sin(Time.time * 4f) * 0.14f) : 1f;
+        float iconSize = 16f * pulse;
+        UITheme.Rect(new Rect(chip.x + 12 + (16f - iconSize) / 2f, chip.y + 8 + (16f - iconSize) / 2f, iconSize, iconSize), accent);
+
+        var labelStyle = new GUIStyle(UITheme.LabelStyle) { fontSize = 14, fontStyle = FontStyle.Bold };
+        GUI.Label(new Rect(chip.x + 36, chip.y + 5, 130, 20), "Extra-Sprung (Q)", labelStyle);
+
+        var stateStyle = new GUIStyle(UITheme.LabelStyle) { fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
+        stateStyle.normal.textColor = accent;
+        GUI.Label(new Rect(chip.xMax - 74, chip.y + 5, 62, 20), ready ? "Bereit" : $"{CooldownRemaining:0}s", stateStyle);
+
+        UITheme.Bar(new Rect(chip.x + 12, chip.y + 28, chip.width - 24, 8), frac, accent);
     }
 
     void HandleGroundState()

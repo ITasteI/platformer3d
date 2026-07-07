@@ -10,6 +10,8 @@ public class SettingsMenu : MonoBehaviour
     const string FullscreenPrefKey = "Fullscreen";
 
     private float volume = 1f;
+    private float musicVol = 1f;
+    private float sfxVol = 1f;
     private string nameInput = "";
     private string nameStatus = "";
 
@@ -17,6 +19,8 @@ public class SettingsMenu : MonoBehaviour
     {
         volume = PlayerPrefs.GetFloat(VolumePrefKey, 1f);
         AudioListener.volume = volume;
+        musicVol = MusicManager.MusicVolume;
+        sfxVol = AudioManager.SfxVolume;
         nameInput = PlayerProfile.Name;
         ApplySavedDisplaySettings();
     }
@@ -54,7 +58,7 @@ public class SettingsMenu : MonoBehaviour
         GUI.color = new Color(1f, 1f, 1f, MainMenu.FadeAlpha);
 
         float w = 380f;
-        float h = 528f;
+        float h = 620f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
@@ -83,7 +87,7 @@ public class SettingsMenu : MonoBehaviour
             GUI.Label(new Rect(x + 20, curY, w - 40, 18), nameStatus, UITheme.LabelStyle);
         curY += 26f;
 
-        GUI.Label(new Rect(x + 20, curY, w - 40, 20), $"Lautstärke: {Mathf.RoundToInt(volume * 100f)}%", UITheme.LabelStyle);
+        GUI.Label(new Rect(x + 20, curY, w - 40, 20), $"Gesamt-Lautstärke: {Mathf.RoundToInt(volume * 100f)}%", UITheme.LabelStyle);
         curY += 22f;
         float newVolume = GUI.HorizontalSlider(new Rect(x + 20, curY + 8, w - 40, 20), volume, 0f, 1f);
         if (!Mathf.Approximately(newVolume, volume))
@@ -91,6 +95,26 @@ public class SettingsMenu : MonoBehaviour
             volume = newVolume;
             AudioListener.volume = volume;
             PlayerPrefs.SetFloat(VolumePrefKey, volume);
+        }
+        curY += 34f;
+
+        GUI.Label(new Rect(x + 20, curY, w - 40, 20), $"Musik: {Mathf.RoundToInt(musicVol * 100f)}%", UITheme.LabelStyle);
+        curY += 22f;
+        float newMusic = GUI.HorizontalSlider(new Rect(x + 20, curY + 8, w - 40, 20), musicVol, 0f, 1f);
+        if (!Mathf.Approximately(newMusic, musicVol))
+        {
+            musicVol = newMusic;
+            MusicManager.SetMusicVolume(musicVol);
+        }
+        curY += 34f;
+
+        GUI.Label(new Rect(x + 20, curY, w - 40, 20), $"Effekte: {Mathf.RoundToInt(sfxVol * 100f)}%", UITheme.LabelStyle);
+        curY += 22f;
+        float newSfx = GUI.HorizontalSlider(new Rect(x + 20, curY + 8, w - 40, 20), sfxVol, 0f, 1f);
+        if (!Mathf.Approximately(newSfx, sfxVol))
+        {
+            sfxVol = newSfx;
+            AudioManager.SetSfxVolume(sfxVol);
         }
         curY += 36f;
 

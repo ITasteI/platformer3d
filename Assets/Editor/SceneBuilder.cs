@@ -263,6 +263,8 @@ public static class SceneBuilder
 
         Light sunLight = CreateLight();
         Camera lobbyCam = CreateLobbyCamera();
+        // Layer 9 is the isolated cosmetic-preview stage; keep it out of the lobby camera's view.
+        lobbyCam.cullingMask &= ~(1 << 9);
         SetupPostProcessing(lobbyCam);
         GameObject playerPrefab = CreatePlayerPrefab();
         CreateNetworkManagerAndLobby(playerPrefab, lobbyCam);
@@ -290,6 +292,8 @@ public static class SceneBuilder
         CreateSettingsMenu();
         CreateWinScreen();
         CreateGhostRunner();
+        CreateMilestoneTracker();
+        CreateCosmeticPreview();
         CreateTutorialOverlay();
         CreateAtmosphereManager(sunLight, stars, weather);
 
@@ -377,6 +381,8 @@ public static class SceneBuilder
         light.shadows = LightShadows.Soft;
         // Low dusk sun angle for long, cozy shadows (ZoneAtmosphere drives color/intensity).
         lightGO.transform.rotation = Quaternion.Euler(16f, -40f, 0f);
+        // The cosmetic preview (layer 9) has its own dedicated light; keep the world sun off it.
+        light.cullingMask = ~(1 << 9);
 
         Material sky = CreateSkyboxMaterial();
         RenderSettings.skybox = sky;
@@ -501,6 +507,7 @@ public static class SceneBuilder
         camGO.transform.SetParent(root.transform);
         camGO.tag = "MainCamera";
         Camera cam = camGO.AddComponent<Camera>();
+        cam.cullingMask &= ~(1 << 9); // never render the isolated cosmetic-preview stage
         AudioListener listener = camGO.AddComponent<AudioListener>();
         var follow = camGO.AddComponent<CameraFollow>();
         follow.target = root.transform;
@@ -1987,6 +1994,105 @@ public static class SceneBuilder
     {
         var go = new GameObject("GhostRunner");
         go.AddComponent<GhostRunner>();
+    }
+
+    static void CreateMilestoneTracker()
+    {
+        var go = new GameObject("MilestoneTracker");
+        go.AddComponent<MilestoneTracker>();
+    }
+
+    // Isolated rotating-character stage (on layer 9) that a dedicated camera renders into a
+    // RenderTexture for the shop's live cosmetic preview. Sits far from the play area; the world
+    // cameras and sun exclude layer 9, and it has its own light for consistent framing.
+    static void CreateCosmeticPreview()
+    {
+        const int PreviewLayer = 9;
+        Vector3 origin = new Vector3(2000f, 2000f, 2000f);
+
+        GameObject rootGO = new GameObject("CosmeticPreview");
+        rootGO.transform.position = origin;
+        var preview = rootGO.AddComponent<CosmeticPreview>();
+
+        GameObject visual = InstantiateKenney("character-oobi", origin);
+        visual.name = "PreviewCharacter";
+        visual.transform.SetParent(rootGO.transform);
+        visual.transform.localPosition = Vector3.zero;
+        visual.transform.localRotation = Quaternion.identity;
+        var animator = visual.AddComponent<Animator>();
+        animator.runtimeAnimatorController = BuildCharacterAnimator(KitPath + "character-oobi.fbx");
+
+        // Trail offset from the spin axis so pure rotation traces a visible ring.
+        GameObject trailGO = new GameObject("PreviewTrail");
+        trailGO.transform.SetParent(rootGO.transform);
+        trailGO.transform.localPosition = new Vector3(0.3f, 0.6f, 0f);
+        TrailRenderer trail = trailGO.AddComponent<TrailRenderer>();
+        trail.time = 0.5f;
+        trail.startWidth = 0.35f;
+        trail.endWidth = 0f;
+        trail.minVertexDistance = 0.04f;
+        trail.autodestruct = false;
+        trail.emitting = false;
+        trail.enabled = false;
+        Shader trailShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (trailShader == null)
+            trailShader = Shader.Find("Sprites/Default");
+        trail.material = new Material(trailShader);
+
+        GameObject fxGO = new GameObject("PreviewParticles");
+        fxGO.transform.SetParent(rootGO.transform);
+        fxGO.transform.localPosition = new Vector3(0f, 0.6f, 0f);
+        var fx = fxGO.AddComponent<ParticleSystem>();
+        var fxMain = fx.main;
+        fxMain.loop = true;
+        fxMain.playOnAwake = false;
+        fxMain.startLifetime = 1f;
+        fxMain.startSpeed = 1f;
+        fxMain.startSize = 0.2f;
+        fxMain.simulationSpace = ParticleSystemSimulationSpace.Local;
+        fxMain.maxParticles = 200;
+        var fxEmission = fx.emission;
+        fxEmission.rateOverTime = 0f;
+        var fxShape = fx.shape;
+        fxShape.shapeType = ParticleSystemShapeType.Sphere;
+        fxShape.radius = 0.35f;
+        var fxRenderer = fxGO.GetComponent<ParticleSystemRenderer>();
+        Shader fxShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (fxShader == null)
+            fxShader = Shader.Find("Sprites/Default");
+        var fxMat = new Material(fxShader);
+        if (fxMat.HasProperty("_BaseColor"))
+            fxMat.SetColor("_BaseColor", Color.white);
+        fxRenderer.material = fxMat;
+        fx.Stop();
+
+        SetLayerRecursive(rootGO, PreviewLayer);
+
+        // Dedicated camera renders ONLY the preview layer into the RenderTexture (set at runtime).
+        GameObject camGO = new GameObject("CosmeticPreviewCamera");
+        camGO.transform.position = origin + new Vector3(0f, 1.0f, 3.4f);
+        camGO.transform.LookAt(origin + new Vector3(0f, 0.95f, 0f));
+        Camera cam = camGO.AddComponent<Camera>();
+        cam.cullingMask = 1 << PreviewLayer;
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = new Color(0.10f, 0.11f, 0.15f, 1f);
+        cam.fieldOfView = 34f;
+        cam.nearClipPlane = 0.1f;
+        cam.farClipPlane = 20f;
+        cam.enabled = false;
+
+        // Dedicated light (only affects the preview layer) for stable, zone-independent lighting.
+        GameObject lightGO = new GameObject("CosmeticPreviewLight");
+        lightGO.transform.position = origin;
+        lightGO.transform.rotation = Quaternion.Euler(28f, 200f, 0f);
+        var light = lightGO.AddComponent<Light>();
+        light.type = LightType.Directional;
+        light.intensity = 1.15f;
+        light.cullingMask = 1 << PreviewLayer;
+
+        preview.trail = trail;
+        preview.effectParticles = fx;
+        preview.previewCamera = cam;
     }
 
     static void CreateEffectsManager()

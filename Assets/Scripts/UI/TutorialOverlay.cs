@@ -22,8 +22,8 @@ public class TutorialOverlay : MonoBehaviour
 
         UITheme.EnsureInit();
 
-        float w = 420f;
-        float h = 300f;
+        float w = 440f;
+        float h = 366f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
@@ -32,12 +32,12 @@ public class TutorialOverlay : MonoBehaviour
 
         string[] lines =
         {
-            "WASD — Bewegen",
-            "Maus — Umsehen",
-            "Leertaste — Springen (doppelt möglich)",
-            "Strg / C — Ducken",
-            "Umschalt — Dash",
-            "Q — Flug-Fähigkeit (Cooldown sinkt mit Shards)",
+            "WASD — Bewegen     •     Maus — Umsehen",
+            "Leertaste — Springen (2× möglich)",
+            "Umschalt — Dash     •     Strg / C — Ducken",
+            "Q — Extra-Sprung (20s Abklingzeit)",
+            "Münzen schnell sammeln = Combo-Bonus (bis x5)",
+            "Ziel: Klettere bis zur Flagge ganz oben!",
             "Escape — Menü",
         };
 
