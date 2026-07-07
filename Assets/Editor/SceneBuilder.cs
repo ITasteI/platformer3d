@@ -171,6 +171,40 @@ public static class SceneBuilder
         QualitySettings.renderPipeline = urpAsset;
     }
 
+    // Some imported asset packs (SimpleNaturePack, Skyden's Low Poly Environment) ship Built-in
+    // Render Pipeline "Standard" shader materials by default, which render solid pink under URP.
+    // Re-point them at URP/Lit, carrying over the main texture/color/metallic/smoothness.
+    static void FixBuiltinStandardMaterials()
+    {
+        string[] folders = { "Assets/SimpleNaturePack", "Assets/Skyden_Games" };
+        string[] guids = AssetDatabase.FindAssets("t:Material", folders);
+        Shader urpLit = Shader.Find("Universal Render Pipeline/Lit");
+        if (urpLit == null)
+            return;
+
+        foreach (string guid in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat == null || mat.shader == null || mat.shader.name != "Standard")
+                continue;
+
+            Texture mainTex = mat.HasProperty("_MainTex") ? mat.GetTexture("_MainTex") : null;
+            Color color = mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
+            float metallic = mat.HasProperty("_Metallic") ? mat.GetFloat("_Metallic") : 0f;
+            float glossiness = mat.HasProperty("_Glossiness") ? mat.GetFloat("_Glossiness") : 0.5f;
+
+            mat.shader = urpLit;
+            if (mainTex != null)
+                mat.SetTexture("_BaseMap", mainTex);
+            mat.SetColor("_BaseColor", color);
+            mat.SetFloat("_Metallic", metallic);
+            mat.SetFloat("_Smoothness", glossiness);
+        }
+
+        AssetDatabase.SaveAssets();
+    }
+
     static void SetupPostProcessing(Camera cam)
     {
         const string profilePath = "Assets/PostProcessProfile.asset";
@@ -225,6 +259,7 @@ public static class SceneBuilder
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
         SetupRenderPipeline();
+        FixBuiltinStandardMaterials();
 
         Light sunLight = CreateLight();
         Camera lobbyCam = CreateLobbyCamera();
@@ -237,6 +272,7 @@ public static class SceneBuilder
         CreateNatureScatter();
         CreateForestBelt();
         CreateRockFormations();
+        CreateBonusNatureScatter();
         CreateSpawnDecor();
         CreateBackgroundIslands();
         CreateDistantLandmark();
@@ -268,6 +304,57 @@ public static class SceneBuilder
         Debug.Log("SceneBuilder: Only-Up-style tower built at " + scenePath);
     }
 
+    const string SkyboxCubemapPath = "Assets/BOXOPHOBIC/Skybox Cubemap Extended/Demo/Textures/Polyverse Skies - Blue Sky.png";
+
+    // Boxophobic's Skybox Cubemap Extended shader, using its demo sky cubemap as the base
+    // texture. Falls back to the built-in procedural skybox if the package isn't present.
+    // ZoneAtmosphere drives _TintColor/_Exposure per zone at runtime for the 5-world mood shift.
+    const string SkyboxNightCubemapPath = "Assets/BOXOPHOBIC/Skybox Cubemap Extended/Demo/Textures/Polyverse Skies - Night Sky.exr";
+
+    // Blends between the day (Blue Sky) and night (dark, pink-tinted nebula) cubemaps -
+    // ZoneAtmosphere drives _CubemapTransition per zone so Sternenkrone shows the night sky.
+    static Material CreateSkyboxMaterial()
+    {
+        Shader blendShader = Shader.Find("Skybox/Cubemap Blend");
+        if (blendShader == null)
+        {
+            Material fallback = new Material(Shader.Find("Skybox/Procedural"));
+            fallback.SetColor("_SkyTint", new Color(0.55f, 0.72f, 0.55f));
+            fallback.SetColor("_GroundColor", new Color(0.4f, 0.42f, 0.3f));
+            fallback.SetFloat("_AtmosphereThickness", 1.15f);
+            fallback.SetFloat("_SunSize", 0.06f);
+            fallback.SetFloat("_SunSizeConvergence", 4f);
+            return fallback;
+        }
+
+        Material sky = new Material(blendShader);
+        Cubemap daySky = AssetDatabase.LoadAssetAtPath<Cubemap>(SkyboxCubemapPath);
+        Cubemap nightSky = AssetDatabase.LoadAssetAtPath<Cubemap>(SkyboxNightCubemapPath);
+        sky.SetTexture("_Tex", daySky);
+        sky.SetTexture("_Tex_Blend", nightSky);
+        sky.SetColor("_Tex_HDR", new Color(1f, 1f, 0f, 0f));
+        sky.SetColor("_Tex_Blend_HDR", new Color(1f, 1f, 0f, 0f));
+        sky.SetFloat("_CubemapTransition", 0f);
+        sky.SetColor("_TintColor", new Color(0.5f, 0.5f, 0.5f, 1f));
+        sky.SetFloat("_Exposure", 1f);
+        sky.SetFloat("_CubemapPosition", 0f);
+
+        sky.SetFloat("_EnableRotation", 0f);
+        sky.DisableKeyword("_ENABLEROTATION_ON");
+
+        // Horizon fog blend reads unity_FogColor automatically, which ZoneAtmosphere already
+        // updates every frame - gives a free per-zone horizon haze that matches the ground fog.
+        sky.SetFloat("_EnableFog", 1f);
+        sky.EnableKeyword("_ENABLEFOG_ON");
+        sky.SetFloat("_FogIntensity", 1f);
+        sky.SetFloat("_FogHeight", 0.7f);
+        sky.SetFloat("_FogSmoothness", 0.01f);
+        sky.SetFloat("_FogFill", 0f);
+        sky.SetFloat("_FogPosition", 0f);
+
+        return sky;
+    }
+
     static Light CreateLight()
     {
         var lightGO = new GameObject("Sun");
@@ -278,12 +365,7 @@ public static class SceneBuilder
         light.shadows = LightShadows.Soft;
         lightGO.transform.rotation = Quaternion.Euler(45f, -30f, 0f);
 
-        Material sky = new Material(Shader.Find("Skybox/Procedural"));
-        sky.SetColor("_SkyTint", new Color(0.55f, 0.72f, 0.55f));
-        sky.SetColor("_GroundColor", new Color(0.4f, 0.42f, 0.3f));
-        sky.SetFloat("_AtmosphereThickness", 1.15f);
-        sky.SetFloat("_SunSize", 0.06f);
-        sky.SetFloat("_SunSizeConvergence", 4f);
+        Material sky = CreateSkyboxMaterial();
         RenderSettings.skybox = sky;
 
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
@@ -863,6 +945,120 @@ public static class SceneBuilder
         float distRiver = DistanceToRiver(pos.x, pos.z, out _);
         float distLake = Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(LakeCenter.x, LakeCenter.z)) - LakeRadius;
         return distRiver < clearance || distLake < clearance;
+    }
+
+    static GameObject InstantiatePrefabByPath(string path)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        if (prefab == null)
+            return null;
+        return (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+    }
+
+    const string PurePolyPrefabPath = "Assets/Pure Poly/Free Low Poly Nature Pack/Prefabs/";
+    const string SimpleNaturePrefabPath = "Assets/SimpleNaturePack/Prefabs/";
+    const string SkydenPrefabPath = "Assets/Skyden_Games/Low Poly Environment/Prefabs/";
+
+    static readonly string[] PurePolyScatterPrefabs =
+    {
+        "PP_Birch_Tree_05", "PP_Birch_Tree_06", "PP_Tree_02", "PP_Tree_10",
+        "PP_Rock_Moss_Grown_09", "PP_Rock_Moss_Grown_11", "PP_Rock_Pile_Forest_Moss_05", "PP_Rock_Pile_Forest_Moss_10",
+        "PP_Mushroom_Fantasy_Orange_09", "PP_Mushroom_Fantasy_Orange_10", "PP_Mushroom_Fantasy_Purple_05", "PP_Mushroom_Fantasy_Purple_08",
+        "PP_Daffodil_03", "PP_Hyacinth_04", "PP_Sunflower_04", "PP_Grass_11", "PP_Grass_15",
+    };
+
+    static readonly string[] SimpleNatureScatterPrefabs =
+    {
+        "Tree_01", "Tree_02", "Tree_03", "Tree_04", "Tree_05",
+        "Bush_01", "Bush_02", "Bush_03",
+        "Rock_01", "Rock_02", "Rock_03", "Rock_04", "Rock_05",
+        "Mushroom_01", "Mushroom_02", "Flowers_01", "Flowers_02", "Stump_01", "Branch_01",
+    };
+
+    // Adds variety from the newly-added Pure Poly / SimpleNaturePack asset packs into the same
+    // mid-ground ring as ForestBelt/RockFormations, plus a river bridge and a couple of Skyden
+    // cliffs/waterfall as extra landmark set-dressing.
+    static void CreateBonusNatureScatter()
+    {
+        Random.InitState(6006);
+        GameObject root = new GameObject("BonusNatureScatter");
+        int count = 70;
+
+        for (int i = 0; i < count; i++)
+        {
+            float angle = Random.Range(0f, Mathf.PI * 2f);
+            float radius = Random.Range(70f, 200f);
+            Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+            if (TooCloseToWater(pos, 8f))
+                continue;
+            pos.y = SampleTerrainHeight(pos);
+
+            bool usePurePoly = Random.value < 0.5f;
+            string[] pool = usePurePoly ? PurePolyScatterPrefabs : SimpleNatureScatterPrefabs;
+            string prefabPath = (usePurePoly ? PurePolyPrefabPath : SimpleNaturePrefabPath) + pool[Random.Range(0, pool.Length)] + ".prefab";
+
+            GameObject obj = InstantiatePrefabByPath(prefabPath);
+            if (obj == null)
+                continue;
+
+            obj.name = "BonusNature_" + i;
+            obj.transform.SetParent(root.transform);
+            obj.transform.position = pos;
+            obj.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            obj.transform.localScale = Vector3.one * Random.Range(0.8f, 1.3f);
+            obj.isStatic = true;
+            obj.AddComponent<DistanceCuller>().maxDistance = 190f;
+        }
+
+        // A bridge crossing the river downstream of the waterfall, oriented across the flow.
+        const float bridgeS = 0.62f;
+        Vector3 bridgeCenter = RiverPoint(bridgeS);
+        GameObject bridge = InstantiatePrefabByPath(PurePolyPrefabPath + "PP_Bridge_15_Middle.prefab");
+        if (bridge != null)
+        {
+            bridge.name = "RiverBridge";
+            bridge.transform.SetParent(root.transform);
+            bridge.transform.position = bridgeCenter + Vector3.up * (RiverBedNormalizedHeight(bridgeS) * RiverMaxHeight + 0.1f);
+            Vector3 tangent = (RiverPoint(bridgeS + 0.02f) - RiverPoint(bridgeS - 0.02f)).normalized;
+            bridge.transform.rotation = Quaternion.LookRotation(new Vector3(-tangent.z, 0f, tangent.x));
+        }
+
+        // A couple of Skyden cliffs near the rock formation belt, and its waterfall prefab
+        // near the lake, for extra landmark variety beyond our procedural rock/water shapes.
+        (string name, float angleDeg, float radius)[] skydenSpots =
+        {
+            ("Cliff 3", 40f, 165f),
+            ("Cliff 6", 210f, 175f),
+        };
+        foreach (var spot in skydenSpots)
+        {
+            float rad = spot.angleDeg * Mathf.Deg2Rad;
+            Vector3 pos = new Vector3(Mathf.Sin(rad) * spot.radius, 0f, Mathf.Cos(rad) * spot.radius);
+            if (TooCloseToWater(pos, 12f))
+                continue;
+            pos.y = SampleTerrainHeight(pos) - 0.5f;
+
+            GameObject cliff = InstantiatePrefabByPath(SkydenPrefabPath + spot.name + ".prefab");
+            if (cliff == null)
+                continue;
+            cliff.name = "SkydenCliff_" + spot.name;
+            cliff.transform.SetParent(root.transform);
+            cliff.transform.position = pos;
+            cliff.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            cliff.isStatic = true;
+            cliff.AddComponent<DistanceCuller>().maxDistance = 220f;
+        }
+
+        GameObject waterfall = InstantiatePrefabByPath(SkydenPrefabPath + "Water Fall.prefab");
+        if (waterfall != null)
+        {
+            waterfall.name = "SkydenWaterfall";
+            waterfall.transform.SetParent(root.transform);
+            Vector3 wfPos = LakeCenter + new Vector3(LakeRadius + 6f, 0f, 4f);
+            wfPos.y = SampleTerrainHeight(wfPos);
+            waterfall.transform.position = wfPos;
+            waterfall.transform.rotation = Quaternion.Euler(0f, 200f, 0f);
+        }
     }
 
     static readonly string[] ForestTrees = { "tree_default", "tree_oak", "tree_pineTallA", "tree_pineTallB", "tree_pineTallC", "tree_fat", "tree_tall", "tree_detailed" };
@@ -1865,56 +2061,68 @@ public static class SceneBuilder
 
         atmosphere.zones = new[]
         {
-            // Wiesenland - warm grassy daylight, no weather
+            // Wiesenland - warm grassy daylight, pure day sky. skyTint multiplies the cubemap
+            // (0.5,0.5,0.5 = neutral/unchanged), skyExposure brightens/dims it overall.
             new ZoneAtmosphere.Zone
             {
                 height = 0f,
                 fogColor = new Color(0.65f, 0.72f, 0.58f),
-                skyTint = new Color(0.55f, 0.72f, 0.55f),
+                skyTint = new Color(0.52f, 0.5f, 0.46f),
+                skyExposure = 1f,
+                skyBlend = 0f,
                 lightColor = new Color(1f, 0.95f, 0.82f),
                 lightIntensity = 1.2f,
                 particleColor = new Color(1f, 1f, 1f, 0f),
                 particleRate = 0f,
             },
-            // Vulkanfeld - hazy orange, drifting embers
+            // Vulkanfeld - hazy orange, drifting embers, still mostly day sky
             new ZoneAtmosphere.Zone
             {
                 height = actualTopHeight * 0.25f,
                 fogColor = new Color(0.5f, 0.22f, 0.12f),
-                skyTint = new Color(0.55f, 0.2f, 0.1f),
+                skyTint = new Color(0.62f, 0.32f, 0.2f),
+                skyExposure = 0.85f,
+                skyBlend = 0.05f,
                 lightColor = new Color(1f, 0.55f, 0.3f),
                 lightIntensity = 1.35f,
                 particleColor = new Color(1f, 0.5f, 0.15f, 0.9f),
                 particleRate = 16f,
             },
-            // Wolkenreich - bright misty blue-white
+            // Wolkenreich - bright misty blue-white, day sky still dominant
             new ZoneAtmosphere.Zone
             {
                 height = actualTopHeight * 0.5f,
                 fogColor = new Color(0.88f, 0.92f, 0.98f),
-                skyTint = new Color(0.6f, 0.78f, 1f),
+                skyTint = new Color(0.52f, 0.56f, 0.64f),
+                skyExposure = 1.2f,
+                skyBlend = 0.15f,
                 lightColor = new Color(1f, 1f, 0.98f),
                 lightIntensity = 1.35f,
                 particleColor = new Color(1f, 1f, 1f, 0.6f),
                 particleRate = 10f,
             },
-            // Eiskristall - pale cyan, falling snow
+            // Eiskristall - pale cyan, falling snow, sky well into the day->night transition
             new ZoneAtmosphere.Zone
             {
                 height = actualTopHeight * 0.75f,
                 fogColor = new Color(0.78f, 0.9f, 0.95f),
-                skyTint = new Color(0.7f, 0.88f, 0.95f),
+                skyTint = new Color(0.48f, 0.56f, 0.6f),
+                skyExposure = 1f,
+                skyBlend = 0.55f,
                 lightColor = new Color(0.85f, 0.93f, 1f),
                 lightIntensity = 1.1f,
                 particleColor = new Color(0.9f, 0.97f, 1f, 0.85f),
                 particleRate = 24f,
             },
-            // Sternenkrone - deep space, stardust
+            // Sternenkrone - deep space, stardust. Full night cubemap (dark, pink-tinted nebula)
+            // instead of just darkening the day sky - the star particle field layers on top.
             new ZoneAtmosphere.Zone
             {
                 height = actualTopHeight,
                 fogColor = new Color(0.02f, 0.02f, 0.08f),
-                skyTint = new Color(0.05f, 0.03f, 0.12f),
+                skyTint = new Color(0.5f, 0.5f, 0.5f),
+                skyExposure = 0.9f,
+                skyBlend = 1f,
                 lightColor = new Color(0.7f, 0.75f, 1f),
                 lightIntensity = 0.6f,
                 particleColor = new Color(0.7f, 0.6f, 1f, 0.7f),

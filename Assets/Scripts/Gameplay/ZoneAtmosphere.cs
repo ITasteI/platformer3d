@@ -8,6 +8,8 @@ public class ZoneAtmosphere : MonoBehaviour
         public float height;
         public Color fogColor;
         public Color skyTint;
+        public float skyExposure;
+        public float skyBlend;
         public Color lightColor;
         public float lightIntensity;
         public Color particleColor;
@@ -51,7 +53,11 @@ public class ZoneAtmosphere : MonoBehaviour
 
         RenderSettings.fogColor = Color.Lerp(a.fogColor, b.fogColor, t);
         if (skyMat != null)
-            skyMat.SetColor("_SkyTint", Color.Lerp(a.skyTint, b.skyTint, t));
+        {
+            skyMat.SetColor("_TintColor", Color.Lerp(a.skyTint, b.skyTint, t));
+            skyMat.SetFloat("_Exposure", Mathf.Lerp(a.skyExposure, b.skyExposure, t));
+            skyMat.SetFloat("_CubemapTransition", Mathf.Lerp(a.skyBlend, b.skyBlend, t));
+        }
 
         if (sunLight != null)
         {
