@@ -694,13 +694,26 @@ public static class SceneBuilder
         if (protagonistAnimatorCache == null)
             protagonistAnimatorCache = BuildProtagonistAnimator();
 
+        // Deterministic import state (the FBX carries a 100x armature + a -90deg X tilt, which the
+        // wrapper transform below counteracts). Measured height at this state is ~3.96 units.
+        var charImporter = AssetImporter.GetAtPath(ProtagonistPath + "Model/characterMedium.fbx") as ModelImporter;
+        if (charImporter != null && (charImporter.bakeAxisConversion || !charImporter.useFileScale || charImporter.globalScale != 1f))
+        {
+            charImporter.bakeAxisConversion = false;
+            charImporter.useFileScale = true;
+            charImporter.globalScale = 1f;
+            charImporter.SaveAndReimport();
+        }
+
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(ProtagonistPath + "Model/characterMedium.fbx");
         GameObject character = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
         character.name = "Character";
         character.transform.SetParent(parent);
         character.transform.localPosition = Vector3.zero;
-        character.transform.localRotation = Quaternion.identity;
-        character.transform.localScale = Vector3.one;
+        // Counteract the FBX's baked -90deg X tilt so the character stands upright, and scale from the
+        // measured ~3.96u to a human ~1.7m. Fixed values because renderer.bounds is unreliable in batch.
+        character.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        character.transform.localScale = Vector3.one * (1.7f / 3.96f);
 
         animator = character.GetComponent<Animator>();
         if (animator == null)
@@ -714,12 +727,6 @@ public static class SceneBuilder
         var renderer = character.GetComponentInChildren<SkinnedMeshRenderer>();
         if (renderer != null)
         {
-            // Normalize to a sensible height no matter what unit scale the FBX imported at (raw was
-            // badly sized -> giant blob). Measured from the actual world bounds.
-            float h = renderer.bounds.size.y;
-            if (h > 0.0001f)
-                character.transform.localScale = Vector3.one * (1.7f / h);
-
             // Saved material ASSET (not a runtime material). A runtime `new Material(...)` was being
             // lost when the player was saved via SaveAsPrefabAsset, so the build showed the pink
             // "missing shader" material. A real .mat asset persists into the build.
