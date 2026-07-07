@@ -22,6 +22,10 @@ public class PlayerController : NetworkBehaviour
     [Header("Movement")]
     public float moveSpeed = 7f;
     public float rotationSpeed = 12f;
+    // Ground/air acceleration so movement eases in and out instead of snapping on/off. High enough
+    // to stay responsive (~0.13s to full speed), but smooths abrupt reversals and stops.
+    public float moveAcceleration = 55f;
+    public float moveDeceleration = 45f;
 
     [Header("Jumping")]
     public float jumpHeight = 1.8f;
@@ -39,14 +43,11 @@ public class PlayerController : NetworkBehaviour
     public float crouchHeight = 1f;
     public float crouchSpeedMultiplier = 0.5f;
 
-    [Header("Boost Ability (Q)")]
-    public float flyDuration = 3f;
-    public float flySpeed = 7f;
-    public float flyAccel = 30f;
-    public float flySinkSpeed = 2f;
-    public float baseCooldown = 90f;
-    public float cooldownReductionPerShard = 15f;
-    public float minCooldown = 20f;
+    [Header("Extra Jump Ability (Q)")]
+    // Q grants one on-demand jump on a fixed cooldown - usable even after the normal double jump is
+    // spent, so it rescues a mistimed jump without breaking the (jump-safety-clamped) level design.
+    public float extraJumpHeight = 2.4f;
+    public float extraJumpCooldown = 20f;
 
     [Header("Dash")]
     public float dashSpeed = 18f;
@@ -61,7 +62,6 @@ public class PlayerController : NetworkBehaviour
 
     public float VerticalVelocity => velocity.y;
     public bool IsCrouching => isCrouching;
-    public bool IsFlying => isFlying;
     public bool AbilityReady => cooldownRemaining <= 0f;
     public float CooldownRemaining => Mathf.Max(0f, cooldownRemaining);
     public Vector3 CheckpointPosition => checkpoint;
@@ -73,10 +73,9 @@ public class PlayerController : NetworkBehaviour
     private float jumpBufferTimer;
     private float highestY;
     private bool isCrouching;
-    private bool isFlying;
-    private float flyTimer;
     private float cooldownRemaining;
     private float currentSpeed;
+    private Vector3 horizontalVel;
     private Vector3 spawnPoint;
     private Vector3 checkpoint;
     private bool wasGrounded;
@@ -197,7 +196,7 @@ public class PlayerController : NetworkBehaviour
         HandleCrouch();
         HandleGroundState();
         HandleJumpInput();
-        HandleFlyAbility();
+        HandleExtraJump();
         HandleDash();
 
         if (dashTimer <= 0f)
@@ -205,8 +204,6 @@ public class PlayerController : NetworkBehaviour
 
         if (adminFlyEnabled && AdminAuth.IsAdmin)
             HandleAdminFly();
-        else if (isFlying)
-            ApplyFlyMove();
         else
             ApplyGravity();
 
@@ -222,7 +219,8 @@ public class PlayerController : NetworkBehaviour
         if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.C))
             vertical -= 1f;
 
-        velocity.y = vertical * flySpeed;
+        const float adminFlySpeed = 9f;
+        velocity.y = vertical * adminFlySpeed;
         controller.Move(new Vector3(0f, velocity.y * Time.deltaTime, 0f));
     }
 
@@ -249,6 +247,7 @@ public class PlayerController : NetworkBehaviour
         transform.position = checkpoint;
         controller.enabled = true;
         velocity = Vector3.zero;
+        horizontalVel = Vector3.zero;
         highestY = checkpoint.y;
     }
 
@@ -262,6 +261,7 @@ public class PlayerController : NetworkBehaviour
         transform.position = spawnPoint;
         controller.enabled = true;
         velocity = Vector3.zero;
+        horizontalVel = Vector3.zero;
         highestY = spawnPoint.y;
     }
 
@@ -328,46 +328,43 @@ public class PlayerController : NetworkBehaviour
 
     void HandleCrouch()
     {
-        isCrouching = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.C);
+        bool wantsCrouch = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.C);
+
+        // Don't stand up into a low ceiling - the capsule would otherwise pop to full height and
+        // clip/eject the character through the geometry above. Stay crouched until there's room.
+        if (!wantsCrouch && isCrouching && CeilingBlocksStanding())
+            wantsCrouch = true;
+
+        isCrouching = wantsCrouch;
         float targetHeight = isCrouching ? crouchHeight : standHeight;
         controller.height = targetHeight;
         controller.center = new Vector3(0f, targetHeight / 2f, 0f);
     }
 
-    void HandleFlyAbility()
+    bool CeilingBlocksStanding()
+    {
+        // Cast from the crouched capsule's top up to standing height, ignoring the player layer (8).
+        Vector3 origin = transform.position + Vector3.up * crouchHeight;
+        float dist = Mathf.Max(0.05f, standHeight - crouchHeight);
+        return Physics.SphereCast(origin, controller.radius * 0.9f, Vector3.up, out _, dist,
+            ~(1 << 8), QueryTriggerInteraction.Ignore);
+    }
+
+    void HandleExtraJump()
     {
         if (cooldownRemaining > 0f)
             cooldownRemaining -= Time.deltaTime;
 
-        if (Input.GetKeyDown(KeyCode.Q) && !isFlying && cooldownRemaining <= 0f)
+        if (Input.GetKeyDown(KeyCode.Q) && cooldownRemaining <= 0f)
         {
-            isFlying = true;
-            flyTimer = flyDuration;
-            velocity.y = Mathf.Max(velocity.y, 0f); // snappy takeoff even if we were falling
+            // On-demand extra jump: an upward impulse that works even mid-air after the double jump
+            // is spent. Fixed cooldown so it's a rescue, not a spammable flight.
+            velocity.y = Mathf.Sqrt(extraJumpHeight * -2f * gravity);
+            cooldownRemaining = extraJumpCooldown;
             AudioManager.Instance?.PlayWhoosh();
+            EffectsManager.Instance?.PlaySparkle(transform.position);
             EffectsManager.Instance?.PlayDust(transform.position);
-            int shards = GameManager.Instance != null ? GameManager.Instance.CoinCount : 0;
-            cooldownRemaining = Mathf.Max(minCooldown, baseCooldown - shards * cooldownReductionPerShard);
         }
-
-        if (isFlying)
-        {
-            flyTimer -= Time.deltaTime;
-            jumpsUsed = 0;
-            // Active boost: hold Space (or keep Q held) to thrust up, release to sink slowly.
-            // Together with full horizontal control this makes it a steerable jetpack burst instead
-            // of a passive auto-rise. ApplyFlyMove moves vertically without gravity while flying.
-            bool thrust = Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.Q);
-            float target = thrust ? flySpeed : -flySinkSpeed;
-            velocity.y = Mathf.MoveTowards(velocity.y, target, flyAccel * Time.deltaTime);
-            if (flyTimer <= 0f)
-                isFlying = false;
-        }
-    }
-
-    void ApplyFlyMove()
-    {
-        controller.Move(new Vector3(0f, velocity.y * Time.deltaTime, 0f));
     }
 
     void OnGUI()
@@ -377,7 +374,7 @@ public class PlayerController : NetworkBehaviour
 
         UITheme.EnsureInit();
         // Below the GameManager HUD (coin/time/height chips + zone bar occupy y≈16..178).
-        string status = AbilityReady ? "Boost (Q): bereit" : $"Boost (Q): {CooldownRemaining:0}s";
+        string status = AbilityReady ? "Extra-Sprung (Q): bereit" : $"Extra-Sprung (Q): {CooldownRemaining:0}s";
         var flyStyle = new GUIStyle(UITheme.LabelStyle) { fontSize = 15, fontStyle = FontStyle.Bold };
         flyStyle.normal.textColor = AbilityReady ? UITheme.Positive : new Color(0.8f, 0.8f, 0.85f);
         GUI.Label(new Rect(22, 188, 300, 24), status, flyStyle);
@@ -444,20 +441,24 @@ public class PlayerController : NetworkBehaviour
     void HandleMovement()
     {
         Vector3 moveDir = GetWorldInputDir();
+        bool hasInput = moveDir.magnitude >= 0.1f;
 
-        if (moveDir.magnitude >= 0.1f)
+        if (hasInput)
         {
             Quaternion targetRotation = Quaternion.LookRotation(moveDir);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+        }
 
-            float speed = (isCrouching ? moveSpeed * crouchSpeedMultiplier : moveSpeed) * adminSpeedMultiplier;
-            controller.Move(moveDir * speed * Time.deltaTime);
-            currentSpeed = speed;
-        }
-        else
-        {
-            currentSpeed = 0f;
-        }
+        // Ease horizontal velocity toward the target instead of snapping. A hard reversal now
+        // decelerates through zero and accelerates back out, so direction changes feel controlled
+        // rather than twitchy - while the high accel keeps it responsive.
+        float speed = (isCrouching ? moveSpeed * crouchSpeedMultiplier : moveSpeed) * adminSpeedMultiplier;
+        Vector3 targetVel = hasInput ? moveDir * speed : Vector3.zero;
+        float rate = hasInput ? moveAcceleration : moveDeceleration;
+        horizontalVel = Vector3.MoveTowards(horizontalVel, targetVel, rate * Time.deltaTime);
+
+        controller.Move(horizontalVel * Time.deltaTime);
+        currentSpeed = horizontalVel.magnitude;
     }
 
     void ApplyGravity()

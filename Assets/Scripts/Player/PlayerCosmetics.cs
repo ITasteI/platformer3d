@@ -127,7 +127,8 @@ public class PlayerCosmetics : NetworkBehaviour
             }
         }
 
-        // Particles - each effect gets its own colour/size/speed/gravity/rate for a distinct look.
+        // Particles - each effect gets its own colour/size/speed/gravity/rate PLUS emission shape,
+        // spin, size-over-life and additive glow, so they read as genuinely different rewards.
         if (effectParticles != null)
         {
             var emission = effectParticles.emission;
@@ -146,9 +147,75 @@ public class PlayerCosmetics : NetworkBehaviour
                 main.startLifetime = effect.ParticleLife;
                 main.gravityModifier = effect.ParticleGravity;
                 emission.rateOverTime = effect.ParticleRate;
+
+                // Emission shape (cone/sphere/circle/hemisphere) gives each effect a distinct spread.
+                var shape = effectParticles.shape;
+                shape.enabled = true;
+                shape.shapeType = effect.Shape;
+
+                // Spin over lifetime: crackling sparks vs. lazy swirl.
+                var rot = effectParticles.rotationOverLifetime;
+                rot.enabled = Mathf.Abs(effect.SpinDegPerSec) > 0.01f;
+                rot.z = new ParticleSystem.MinMaxCurve(effect.SpinDegPerSec * Mathf.Deg2Rad);
+
+                // Size over lifetime: embers shrink, puffs grow, twinkles fade out.
+                var sol = effectParticles.sizeOverLifetime;
+                sol.enabled = true;
+                sol.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, Mathf.Max(0.01f, effect.EndSizeMul)));
+
+                ApplyParticleBlend(effect.Additive);
+
                 if (!effectParticles.isPlaying)
                     effectParticles.Play();
             }
         }
+    }
+
+    // Swaps the particle renderer between soft alpha and glowing additive blending. Materials are
+    // built once and reused; degrades gracefully if a shader property isn't present.
+    private Material alphaParticleMat;
+    private Material additiveParticleMat;
+
+    void ApplyParticleBlend(bool additive)
+    {
+        var psr = effectParticles.GetComponent<ParticleSystemRenderer>();
+        if (psr == null)
+            return;
+
+        if (additive)
+        {
+            if (additiveParticleMat == null)
+                additiveParticleMat = BuildParticleMaterial(true);
+            psr.material = additiveParticleMat;
+        }
+        else
+        {
+            if (alphaParticleMat == null)
+                alphaParticleMat = BuildParticleMaterial(false);
+            psr.material = alphaParticleMat;
+        }
+    }
+
+    static Material BuildParticleMaterial(bool additive)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+        var m = new Material(shader);
+        if (m.HasProperty("_BaseColor"))
+            m.SetColor("_BaseColor", Color.white);
+        // URP Particles/Unlit: _Surface 1 = Transparent, _Blend 0 = Alpha, 1 = Additive.
+        if (m.HasProperty("_Surface"))
+            m.SetFloat("_Surface", 1f);
+        if (m.HasProperty("_Blend"))
+            m.SetFloat("_Blend", additive ? 1f : 0f);
+        if (additive)
+        {
+            m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
+            m.SetInt("_ZWrite", 0);
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        }
+        return m;
     }
 }
