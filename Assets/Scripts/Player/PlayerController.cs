@@ -244,6 +244,19 @@ public class PlayerController : NetworkBehaviour
         highestY = checkpoint.y;
     }
 
+    // Reset the run to the very start (used by "Neu starten"): clears the checkpoint back to
+    // the spawn and teleports there, without touching the network session.
+    public void RestartFromBeginning()
+    {
+        checkpoint = spawnPoint;
+        currentPlatform = null;
+        controller.enabled = false;
+        transform.position = spawnPoint;
+        controller.enabled = true;
+        velocity = Vector3.zero;
+        highestY = spawnPoint.y;
+    }
+
     Vector3 GetWorldInputDir()
     {
         float inputX = Input.GetAxisRaw("Horizontal");

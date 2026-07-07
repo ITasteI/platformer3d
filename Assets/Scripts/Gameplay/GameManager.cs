@@ -48,6 +48,26 @@ public class GameManager : MonoBehaviour
         CoinCount = count;
     }
 
+    // Restart the current run from the bottom without reloading the scene (a reload breaks the
+    // running Netcode host). Clears the save, resets counters, and teleports the local player
+    // back to spawn. Note: already-collected shards stay collected for this session.
+    public void RestartRun()
+    {
+        SaveSystem.DeleteSave();
+        CoinCount = 0;
+        PlayTime = 0f;
+        WinScreen.ClearWon();
+
+        if (player != null)
+        {
+            var pc = player.GetComponent<PlayerController>();
+            if (pc != null)
+                pc.RestartFromBeginning();
+        }
+
+        MainMenu.SetScreen(MenuScreen.Hidden);
+    }
+
     public static string GetWorldName(float t)
     {
         int index = t < 0.2f ? 0 : (t < 0.4f ? 1 : (t < 0.6f ? 2 : (t < 0.8f ? 3 : 4)));

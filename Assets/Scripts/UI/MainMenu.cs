@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public enum MenuScreen
 {
@@ -244,8 +243,8 @@ public class MainMenu : MonoBehaviour
         {
             AudioManager.Instance?.PlayClick();
             SaveSystem.DeleteSave();
-            if (HasActiveGame)
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            if (HasActiveGame && GameManager.Instance != null)
+                GameManager.Instance.RestartRun();   // in-place reset, no scene reload
             else
                 SetScreen(MenuScreen.Play);
         }

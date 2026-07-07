@@ -12,8 +12,12 @@ using UnityEngine.SceneManagement;
 
 public static class SceneBuilder
 {
-    const int PlatformCount = 160;
+    const int PlatformCount = 550;
     const float TopHeight = 500f;
+    // Real height the generated tower reaches (measured after CreateTower). Zone atmosphere,
+    // music, stars and the HUD all key off this so all five worlds are actually reached,
+    // instead of the old fixed 500 that the ~240m tower never climbed to.
+    static float actualTopHeight = TopHeight;
     const string KitPath = "Assets/KenneyKit/";
     const string CityKitPath = "Assets/CityKit/";
     const string NatureKitPath = "Assets/NatureKit/";
@@ -232,8 +236,9 @@ public static class SceneBuilder
         CreateNatureScatter();
         CreateJunkyardDecor();
         CreateCityBackground();
-        CreateClouds();
         Vector3 topPos = CreateTower();
+        CreateClouds();
+        CreateWorldAmbience();
         CreateGoalFlag(topPos);
         ParticleSystem stars = CreateStarField();
         ParticleSystem weather = CreateWeatherParticles();
@@ -979,7 +984,8 @@ public static class SceneBuilder
         {
             float angle = i * 2.4f;
             float radius = 15f + (i % 5) * 5f;
-            float height = Mathf.Lerp(TopHeight * 0.3f, TopHeight * 0.65f, (i % 7) / 6f);
+            // Cluster the clouds around the Wolkenreich band (0.4-0.6 of the climb).
+            float height = Mathf.Lerp(actualTopHeight * 0.4f, actualTopHeight * 0.6f, (i % 7) / 6f);
             Vector3 center = new Vector3(Mathf.Sin(angle) * radius, height, Mathf.Cos(angle) * radius);
 
             GameObject cloud = new GameObject("Cloud_" + i);
@@ -1001,6 +1007,119 @@ public static class SceneBuilder
                 puff.transform.localScale = Vector3.one * puffScale;
                 Object.DestroyImmediate(puff.GetComponent<Collider>());
                 SetColor(puff, new Color(0.97f, 0.97f, 1f));
+            }
+        }
+    }
+
+    static Material MakeUnlitColor(Color c)
+    {
+        Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        mat.SetColor("_BaseColor", c);
+        mat.SetFloat("_Smoothness", 0.1f);
+        return mat;
+    }
+
+    static Material MakeEmissiveColor(Color baseColor, Color emission)
+    {
+        Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        mat.SetColor("_BaseColor", baseColor);
+        mat.EnableKeyword("_EMISSION");
+        mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+        mat.SetColor("_EmissionColor", emission);
+        return mat;
+    }
+
+    static GameObject MakeAmbienceBlock(Transform parent, Vector3 pos, Vector3 scale, Material mat)
+    {
+        GameObject block = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        Object.DestroyImmediate(block.GetComponent<Collider>());
+        block.transform.SetParent(parent);
+        block.transform.position = pos;
+        block.transform.localScale = scale;
+        block.transform.rotation = Quaternion.Euler(Random.Range(-8f, 8f), Random.Range(0f, 360f), Random.Range(-8f, 8f));
+        block.GetComponent<Renderer>().sharedMaterial = mat;
+        block.isStatic = true;
+        return block;
+    }
+
+    // Decorative floating islands themed to each of the five worlds, ringed around the tower at
+    // that world's height band. Purely cosmetic (no colliders) - gives each section a distinct
+    // identity as you climb, matching the reference art's floating-island look.
+    static void CreateWorldAmbience()
+    {
+        Random.InitState(5150);
+        GameObject root = new GameObject("WorldAmbience");
+
+        Material grassTop = MakeUnlitColor(new Color(0.32f, 0.55f, 0.24f));
+        Material dirt = MakeUnlitColor(new Color(0.45f, 0.34f, 0.24f));
+        Material volcanoRock = MakeUnlitColor(new Color(0.18f, 0.13f, 0.12f));
+        Material lava = MakeEmissiveColor(new Color(0.3f, 0.08f, 0f), new Color(1.4f, 0.5f, 0.05f));
+        Material iceMat = MakeEmissiveColor(new Color(0.6f, 0.8f, 0.95f), new Color(0.3f, 0.55f, 0.75f));
+        Material asteroid = MakeUnlitColor(new Color(0.28f, 0.28f, 0.34f));
+        Material crystalPurple = MakeEmissiveColor(new Color(0.35f, 0.2f, 0.5f), new Color(0.5f, 0.2f, 0.9f));
+
+        const int perZone = 11;
+        for (int zone = 0; zone < 5; zone++)
+        {
+            float hMin = actualTopHeight * (zone * 0.2f + 0.02f);
+            float hMax = actualTopHeight * (zone * 0.2f + 0.18f);
+
+            for (int i = 0; i < perZone; i++)
+            {
+                float ang = Random.Range(0f, Mathf.PI * 2f);
+                float rad = Random.Range(18f, 45f);
+                float h = Random.Range(hMin, hMax);
+                Vector3 islandPos = new Vector3(Mathf.Sin(ang) * rad, h, Mathf.Cos(ang) * rad);
+
+                GameObject island = new GameObject("Island_" + zone + "_" + i);
+                island.transform.SetParent(root.transform);
+                island.transform.position = islandPos;
+                island.AddComponent<DistanceCuller>().maxDistance = 160f;
+
+                float baseW = Random.Range(3f, 6f);
+
+                switch (zone)
+                {
+                    case 0: // Nature: grass-topped dirt island with a tree
+                        MakeAmbienceBlock(island.transform, islandPos, new Vector3(baseW, 1.2f, baseW), grassTop);
+                        MakeAmbienceBlock(island.transform, islandPos + Vector3.down * 1.2f, new Vector3(baseW * 0.8f, 1.6f, baseW * 0.8f), dirt);
+                        GameObject tree = InstantiateNature(Random.value < 0.5f ? "tree_default" : "tree_pineTallA", islandPos + Vector3.up * 0.7f);
+                        if (tree != null)
+                        {
+                            tree.transform.SetParent(island.transform);
+                            tree.transform.localScale = Vector3.one * Random.Range(1.2f, 2f);
+                        }
+                        break;
+                    case 1: // Volcano: dark rock with glowing lava cracks
+                        MakeAmbienceBlock(island.transform, islandPos, new Vector3(baseW, Random.Range(2f, 4f), baseW), volcanoRock);
+                        MakeAmbienceBlock(island.transform, islandPos + Vector3.up * 0.4f, new Vector3(baseW * 0.5f, 0.4f, baseW * 0.5f), lava);
+                        break;
+                    case 2: // Cloud: soft white cloud puffs
+                        for (int p = 0; p < 4; p++)
+                        {
+                            GameObject puff = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                            Object.DestroyImmediate(puff.GetComponent<Collider>());
+                            puff.transform.SetParent(island.transform);
+                            puff.transform.position = islandPos + new Vector3(Random.Range(-2f, 2f), Random.Range(-0.5f, 0.5f), Random.Range(-2f, 2f));
+                            puff.transform.localScale = Vector3.one * Random.Range(2f, 3.2f);
+                            puff.GetComponent<Renderer>().sharedMaterial = MakeUnlitColor(new Color(0.97f, 0.97f, 1f));
+                            puff.isStatic = true;
+                        }
+                        break;
+                    case 3: // Ice: pale glowing crystal shards
+                        MakeAmbienceBlock(island.transform, islandPos, new Vector3(baseW, 1f, baseW), iceMat);
+                        for (int c = 0; c < 3; c++)
+                        {
+                            GameObject shard = MakeAmbienceBlock(island.transform, islandPos + new Vector3(Random.Range(-1.5f, 1.5f), Random.Range(0.5f, 2f), Random.Range(-1.5f, 1.5f)), new Vector3(0.6f, Random.Range(2f, 4f), 0.6f), iceMat);
+                            shard.transform.rotation = Quaternion.Euler(Random.Range(-25f, 25f), Random.Range(0f, 360f), Random.Range(-25f, 25f));
+                        }
+                        break;
+                    default: // Space: dark asteroids + purple crystals
+                        MakeAmbienceBlock(island.transform, islandPos, new Vector3(baseW * 0.8f, baseW * 0.7f, baseW * 0.8f), asteroid);
+                        if (Random.value < 0.6f)
+                            MakeAmbienceBlock(island.transform, islandPos + Vector3.up * baseW * 0.4f, new Vector3(0.7f, Random.Range(1.5f, 3f), 0.7f), crystalPurple);
+                        break;
+                }
             }
         }
     }
@@ -1174,6 +1293,8 @@ public static class SceneBuilder
             lastPos = pos;
         }
 
+        actualTopHeight = lastPos.y;
+        Debug.Log("SceneBuilder: tower reaches height " + actualTopHeight.ToString("0"));
         return lastPos;
     }
 
@@ -1303,7 +1424,7 @@ public static class SceneBuilder
     {
         var go = new GameObject("MusicManager");
         var music = go.AddComponent<MusicManager>();
-        music.topHeight = TopHeight;
+        music.topHeight = actualTopHeight;
         music.lowZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_low.mp3");
         music.midZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_mid.mp3");
         music.highZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_high.mp3");
@@ -1380,7 +1501,7 @@ public static class SceneBuilder
     static ParticleSystem CreateStarField()
     {
         GameObject starsGO = new GameObject("StarField");
-        starsGO.transform.position = new Vector3(0f, TopHeight - 10f, 0f);
+        starsGO.transform.position = new Vector3(0f, actualTopHeight - 10f, 0f);
         var ps = starsGO.AddComponent<ParticleSystem>();
 
         var main = ps.main;
@@ -1451,7 +1572,7 @@ public static class SceneBuilder
     {
         var gm = new GameObject("GameManager");
         var manager = gm.AddComponent<GameManager>();
-        manager.topHeight = TopHeight;
+        manager.topHeight = actualTopHeight;
         return gm;
     }
 
@@ -1535,7 +1656,7 @@ public static class SceneBuilder
             // Vulkanfeld - hazy orange, drifting embers
             new ZoneAtmosphere.Zone
             {
-                height = TopHeight * 0.25f,
+                height = actualTopHeight * 0.25f,
                 fogColor = new Color(0.5f, 0.22f, 0.12f),
                 skyTint = new Color(0.55f, 0.2f, 0.1f),
                 lightColor = new Color(1f, 0.55f, 0.3f),
@@ -1546,7 +1667,7 @@ public static class SceneBuilder
             // Wolkenreich - bright misty blue-white
             new ZoneAtmosphere.Zone
             {
-                height = TopHeight * 0.5f,
+                height = actualTopHeight * 0.5f,
                 fogColor = new Color(0.88f, 0.92f, 0.98f),
                 skyTint = new Color(0.6f, 0.78f, 1f),
                 lightColor = new Color(1f, 1f, 0.98f),
@@ -1557,7 +1678,7 @@ public static class SceneBuilder
             // Eiskristall - pale cyan, falling snow
             new ZoneAtmosphere.Zone
             {
-                height = TopHeight * 0.75f,
+                height = actualTopHeight * 0.75f,
                 fogColor = new Color(0.78f, 0.9f, 0.95f),
                 skyTint = new Color(0.7f, 0.88f, 0.95f),
                 lightColor = new Color(0.85f, 0.93f, 1f),
@@ -1568,7 +1689,7 @@ public static class SceneBuilder
             // Sternenkrone - deep space, stardust
             new ZoneAtmosphere.Zone
             {
-                height = TopHeight,
+                height = actualTopHeight,
                 fogColor = new Color(0.02f, 0.02f, 0.08f),
                 skyTint = new Color(0.05f, 0.03f, 0.12f),
                 lightColor = new Color(0.7f, 0.75f, 1f),

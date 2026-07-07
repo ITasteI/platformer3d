@@ -1,10 +1,11 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public class WinScreen : MonoBehaviour
 {
     public static WinScreen Instance { get; private set; }
     public static bool HasWon { get; private set; }
+
+    public static void ClearWon() => HasWon = false;
 
     private float finishTime;
     private bool isNewBest;
@@ -68,10 +69,10 @@ public class WinScreen : MonoBehaviour
         if (GUI.Button(new Rect(x + 30, y + 195, w - 60, 40), "Neu starten", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
-            // Full restart from the bottom: clear the checkpoint save first, otherwise the
-            // reloaded run would immediately respawn at the top checkpoint near the goal.
-            SaveSystem.DeleteSave();
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            // In-place reset instead of SceneManager.LoadScene: reloading the scene while the
+            // Netcode host is running (and DontDestroyOnLoad) left a duplicate NetworkManager
+            // and no player, freezing the game. RestartRun resets the run without a reload.
+            GameManager.Instance?.RestartRun();
         }
     }
 }
