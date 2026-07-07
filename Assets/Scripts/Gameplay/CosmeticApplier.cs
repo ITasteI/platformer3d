@@ -113,6 +113,30 @@ public static class CosmeticApplier
     static Material AlphaMat => alphaMat != null ? alphaMat : (alphaMat = BuildParticleMaterial(false));
     static Material AdditiveMat => additiveMat != null ? additiveMat : (additiveMat = BuildParticleMaterial(true));
 
+    // Soft round glow sprite so particles read as smooth puffs/sparks instead of hard pixel squares.
+    static Texture2D softSprite;
+    static Texture2D SoftSprite => softSprite != null ? softSprite : (softSprite = BuildSoftSprite());
+
+    static Texture2D BuildSoftSprite()
+    {
+        const int S = 64;
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+        Vector2 c = new Vector2((S - 1) / 2f, (S - 1) / 2f);
+        float maxR = (S - 1) / 2f;
+        for (int y = 0; y < S; y++)
+        {
+            for (int x = 0; x < S; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x, y), c) / maxR;
+                float a = Mathf.Clamp01(1f - d);
+                a *= a; // smooth quadratic falloff to a soft edge
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
     static Material BuildParticleMaterial(bool additive)
     {
         Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
@@ -121,6 +145,10 @@ public static class CosmeticApplier
         var m = new Material(shader);
         if (m.HasProperty("_BaseColor"))
             m.SetColor("_BaseColor", Color.white);
+        if (m.HasProperty("_BaseMap"))
+            m.SetTexture("_BaseMap", SoftSprite);
+        if (m.HasProperty("_MainTex"))
+            m.SetTexture("_MainTex", SoftSprite);
         if (m.HasProperty("_Surface"))
             m.SetFloat("_Surface", 1f);
         if (m.HasProperty("_Blend"))

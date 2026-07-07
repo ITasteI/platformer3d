@@ -30,7 +30,21 @@ public class SettingsMenu : MonoBehaviour
         if (PlayerPrefs.HasKey(QualityPrefKey))
             QualitySettings.SetQualityLevel(Mathf.Clamp(PlayerPrefs.GetInt(QualityPrefKey), 0, QualitySettings.names.Length - 1), true);
 
-        FullScreenMode mode = PlayerPrefs.GetInt(FullscreenPrefKey, 1) == 1
+        // First launch (nothing saved yet): start in a clean, closeable 720p window instead of
+        // borderless fullscreen. Borderless has no window close button and on some displays the UI
+        // scales wrong on the very first frame; a normal window avoids both. Persisted so it sticks;
+        // the player can switch to fullscreen in Settings afterwards.
+        if (!PlayerPrefs.HasKey(FullscreenPrefKey) && !PlayerPrefs.HasKey(ResWidthPrefKey))
+        {
+            PlayerPrefs.SetInt(FullscreenPrefKey, 0);
+            PlayerPrefs.SetInt(ResWidthPrefKey, 1280);
+            PlayerPrefs.SetInt(ResHeightPrefKey, 720);
+            PlayerPrefs.Save();
+            Screen.SetResolution(1280, 720, FullScreenMode.Windowed);
+            return;
+        }
+
+        FullScreenMode mode = PlayerPrefs.GetInt(FullscreenPrefKey, 0) == 1
             ? FullScreenMode.FullScreenWindow
             : FullScreenMode.Windowed;
 

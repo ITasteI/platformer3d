@@ -493,10 +493,11 @@ public static class SceneBuilder
 
         GameObject nameTagGO = new GameObject("NameTag");
         nameTagGO.transform.SetParent(root.transform);
-        nameTagGO.transform.localPosition = new Vector3(0f, 2.3f, 0f);
+        // Sits just above the head; small so it labels the player without dominating the view.
+        nameTagGO.transform.localPosition = new Vector3(0f, 2.15f, 0f);
         TextMesh nameTagText = nameTagGO.AddComponent<TextMesh>();
-        nameTagText.characterSize = 0.12f;
-        nameTagText.fontSize = 48;
+        nameTagText.characterSize = 0.045f;
+        nameTagText.fontSize = 64;
         nameTagText.anchor = TextAnchor.LowerCenter;
         nameTagText.alignment = TextAlignment.Center;
         nameTagText.color = Color.white;

@@ -7,6 +7,7 @@ public enum MenuScreen
     Play,
     Settings,
     Shop,
+    Controls,
     QuitConfirm,
     RestartConfirm,
     Hidden,
@@ -40,7 +41,7 @@ public class MainMenu : MonoBehaviour
             SetScreen(MenuScreen.Main);
         else if (Current == MenuScreen.QuitConfirm || Current == MenuScreen.RestartConfirm
                  || Current == MenuScreen.Settings || Current == MenuScreen.Play
-                 || Current == MenuScreen.Shop)
+                 || Current == MenuScreen.Shop || Current == MenuScreen.Controls)
             SetScreen(MenuScreen.Main);
         else if (HasActiveGame)
             SetScreen(MenuScreen.Hidden);
@@ -85,7 +86,54 @@ public class MainMenu : MonoBehaviour
             case MenuScreen.RestartConfirm:
                 DrawRestartConfirm();
                 break;
+            case MenuScreen.Controls:
+                DrawControls();
+                break;
         }
+    }
+
+    static readonly string[] ControlLines =
+    {
+        "WASD — Bewegen",
+        "Maus — Umsehen",
+        "Leertaste — Springen (2× möglich)",
+        "Umschalt — Dash",
+        "Strg / C — Ducken",
+        "Q — Extra-Sprung (20s Abklingzeit)",
+        "Münzen schnell sammeln = Combo-Bonus (bis x5)",
+        "Ziel: Klettere bis zur Flagge ganz oben!",
+        "Escape — Menü",
+    };
+
+    void DrawControls()
+    {
+        UITheme.EnsureInit();
+
+        Color prevColor = GUI.color;
+        GUI.color = new Color(1f, 1f, 1f, FadeAlpha);
+
+        float w = 460f;
+        float h = 400f;
+        float x = (Screen.width - w) / 2f;
+        float y = (Screen.height - h) / 2f;
+
+        GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
+        GUI.Label(new Rect(x, y + 14, w, 34), "Steuerung", UITheme.TitleStyle);
+
+        float ly = y + 62f;
+        foreach (var line in ControlLines)
+        {
+            GUI.Label(new Rect(x + 28, ly, w - 56, 22), line, UITheme.LabelStyle);
+            ly += 28f;
+        }
+
+        if (GUI.Button(new Rect(x + 30, y + h - 50, w - 60, 36), "↩ Zurück", UITheme.ButtonStyle))
+        {
+            AudioManager.Instance?.PlayClick();
+            SetScreen(MenuScreen.Main);
+        }
+
+        GUI.color = prevColor;
     }
 
     void DrawNamePrompt()
@@ -175,13 +223,19 @@ public class MainMenu : MonoBehaviour
             SetScreen(MenuScreen.Shop);
         }
 
-        if (GUI.Button(new Rect(x + 30, y + 188, w - 60, 36), "⚙ Einstellungen", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 30, y + 188, w - 60, 36), "🎮 Steuerung", UITheme.ButtonStyle))
+        {
+            AudioManager.Instance?.PlayClick();
+            SetScreen(MenuScreen.Controls);
+        }
+
+        if (GUI.Button(new Rect(x + 30, y + 228, w - 60, 36), "⚙ Einstellungen", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             SetScreen(MenuScreen.Settings);
         }
 
-        if (GUI.Button(new Rect(x + 30, y + 228, w - 60, 36), "✕ Spiel Beenden", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 30, y + 268, w - 60, 36), "✕ Spiel Beenden", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             SetScreen(MenuScreen.QuitConfirm);
