@@ -13,6 +13,9 @@ public class WinScreen : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        // HasWon is static and otherwise survives a scene reload ("Neu starten"),
+        // leaving the win screen stuck on top of the fresh run forever.
+        HasWon = false;
     }
 
     public void TriggerWin()

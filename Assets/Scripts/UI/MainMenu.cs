@@ -23,6 +23,7 @@ public class MainMenu : MonoBehaviour
 
     private string nameInput = "";
     private string nameError = "";
+    private bool nameFieldFocused;
 
     void Awake()
     {
@@ -100,7 +101,11 @@ public class MainMenu : MonoBehaviour
 
         GUI.SetNextControlName("NameField");
         nameInput = GUI.TextField(new Rect(x + 20, y + 65, w - 40, 30), nameInput, PlayerProfile.MaxNameLength);
-        GUI.FocusControl("NameField");
+        if (!nameFieldFocused)
+        {
+            GUI.FocusControl("NameField");
+            nameFieldFocused = true;
+        }
 
         if (nameError.Length > 0)
         {
