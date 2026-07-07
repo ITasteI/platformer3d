@@ -221,9 +221,9 @@ public static class SceneBuilder
         }
 
         var bloom = profile.Add<Bloom>(true);
-        bloom.threshold.Override(0.9f);
-        bloom.intensity.Override(0.5f);
-        bloom.scatter.Override(0.7f);
+        bloom.threshold.Override(0.85f);
+        bloom.intensity.Override(0.65f); // a touch stronger so emissive skins/auras/coins glow
+        bloom.scatter.Override(0.72f);
 
         var colorAdjustments = profile.Add<ColorAdjustments>(true);
         colorAdjustments.postExposure.Override(0.15f);
@@ -567,6 +567,14 @@ public static class SceneBuilder
         camGO.tag = "MainCamera";
         Camera cam = camGO.AddComponent<Camera>();
         cam.cullingMask &= ~(1 << 9); // never render the isolated cosmetic-preview stage
+        // Enable post-processing on the actual gameplay camera - it was only on the lobby camera, so
+        // in-game had NO bloom/tonemapping/color-grading/vignette. This makes the whole game benefit
+        // from the already-configured pipeline (and the emissive skins/auras finally bloom).
+        var playerCamData = cam.GetComponent<UniversalAdditionalCameraData>();
+        if (playerCamData == null)
+            playerCamData = cam.gameObject.AddComponent<UniversalAdditionalCameraData>();
+        playerCamData.renderPostProcessing = true;
+        playerCamData.antialiasing = AntialiasingMode.FastApproximateAntialiasing;
         AudioListener listener = camGO.AddComponent<AudioListener>();
         var follow = camGO.AddComponent<CameraFollow>();
         follow.target = root.transform;
@@ -875,7 +883,7 @@ public static class SceneBuilder
         if (normal != null)
         {
             layer.normalMapTexture = normal;
-            layer.normalScale = 0.6f;
+            layer.normalScale = 0.85f; // a bit more surface relief so the ground reads less flat
         }
         EditorUtility.SetDirty(layer);
         return layer;
@@ -1127,7 +1135,7 @@ public static class SceneBuilder
     {
         Random.InitState(777);
         GameObject root = new GameObject("NatureScatter");
-        int count = 90;
+        int count = 140; // denser meadow so the start area feels lush, not empty (still distance-culled)
 
         for (int i = 0; i < count; i++)
         {
@@ -2168,6 +2176,49 @@ public static class SceneBuilder
         effects.sparkleTemplate.gameObject.SetActive(false);
     }
 
+    static Texture2D softParticleTex;
+
+    // A soft round glow sprite (radial alpha) so burst effects read as smooth puffs, not pixel blocks.
+    static Texture2D GetSoftParticleTexture()
+    {
+        if (softParticleTex != null)
+            return softParticleTex;
+
+        const string assetPath = "Assets/Generated/SoftParticle.png";
+        softParticleTex = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+        if (softParticleTex != null)
+            return softParticleTex;
+
+        string dir = Path.Combine(Application.dataPath, "Generated");
+        Directory.CreateDirectory(dir);
+        const int S = 64;
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
+        Vector2 c = new Vector2((S - 1) / 2f, (S - 1) / 2f);
+        float maxR = (S - 1) / 2f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x, y), c) / maxR;
+                float a = Mathf.Clamp01(1f - d);
+                a *= a;
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+        tex.Apply();
+        File.WriteAllBytes(Path.Combine(dir, "SoftParticle.png"), tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        AssetDatabase.Refresh();
+
+        var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+        if (importer != null)
+        {
+            importer.alphaIsTransparency = true;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.SaveAndReimport();
+        }
+        softParticleTex = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+        return softParticleTex;
+    }
+
     static ParticleSystem BuildBurstParticle(string name, Color color, int burstCount, float size, float lifetime)
     {
         GameObject go = new GameObject(name);
@@ -2190,6 +2241,11 @@ public static class SceneBuilder
         shape.shapeType = ParticleSystemShapeType.Sphere;
         shape.radius = 0.3f;
 
+        // Smooth shrink-out so particles fade instead of popping.
+        var sol = ps.sizeOverLifetime;
+        sol.enabled = true;
+        sol.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, 0f));
+
         var renderer = go.GetComponent<ParticleSystemRenderer>();
         Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (shader == null)
@@ -2197,6 +2253,16 @@ public static class SceneBuilder
         var mat = new Material(shader);
         if (mat.HasProperty("_BaseColor"))
             mat.SetColor("_BaseColor", color);
+        // Soft round sprite + alpha-transparent blend so effects look like smooth puffs.
+        Texture2D soft = GetSoftParticleTexture();
+        if (mat.HasProperty("_BaseMap"))
+            mat.SetTexture("_BaseMap", soft);
+        if (mat.HasProperty("_MainTex"))
+            mat.SetTexture("_MainTex", soft);
+        if (mat.HasProperty("_Surface"))
+            mat.SetFloat("_Surface", 1f);
+        if (mat.HasProperty("_Blend"))
+            mat.SetFloat("_Blend", 0f);
         renderer.material = mat;
 
         ps.Stop();
