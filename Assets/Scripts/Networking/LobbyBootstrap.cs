@@ -21,6 +21,8 @@ public class LobbyBootstrap : MonoBehaviour
     private string relayJoinCodeInput = "";
     private string statusMessage = "";
     private bool wasConnected;
+    private float connectDeadline = -1f;
+    private const float ConnectTimeoutSeconds = 8f;
 
     private class Toast
     {
@@ -50,12 +52,35 @@ public class LobbyBootstrap : MonoBehaviour
         }
     }
 
+    void Update()
+    {
+        // A LAN join attempt across networks without port-forwarding never fails or succeeds -
+        // it just hangs forever. Give it a hard timeout with a clear message instead.
+        if (connectDeadline < 0f || Time.time < connectDeadline)
+            return;
+
+        connectDeadline = -1f;
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsClient && !NetworkManager.Singleton.IsConnectedClient)
+        {
+            NetworkManager.Singleton.Shutdown();
+            statusMessage = "Verbindung fehlgeschlagen. Seid ihr im selben Netzwerk? Nutzt sonst Relay.";
+            ShowToast("Verbindung fehlgeschlagen");
+        }
+    }
+
     void OnClientConnected(ulong clientId)
     {
         wasConnected = true;
         bool isSelf = NetworkManager.Singleton != null && clientId == NetworkManager.Singleton.LocalClientId;
-        if (!isSelf)
+        if (isSelf)
+        {
+            connectDeadline = -1f;
+            statusMessage = "Verbunden!";
+        }
+        else
+        {
             ShowToast("Spieler beigetreten");
+        }
     }
 
     void OnClientDisconnected(ulong clientId)
@@ -104,7 +129,7 @@ public class LobbyBootstrap : MonoBehaviour
         GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
         GUI.Label(new Rect(x, y + 8, w, 28), "Multiplayer", UITheme.TitleStyle);
 
-        GUI.Label(new Rect(x + 20, y + 45, w - 40, 20), "LAN / direkte IP:", UITheme.LabelStyle);
+        GUI.Label(new Rect(x + 20, y + 45, w - 40, 20), "LAN / direkte IP (nur selbes Netzwerk):", UITheme.LabelStyle);
         ipAddress = GUI.TextField(new Rect(x + 20, y + 65, w - 40, 25), ipAddress);
 
         if (GUI.Button(new Rect(x + 20, y + 100, (w - 50) / 2, 30), "Hosten (LAN)", UITheme.ButtonStyle))
@@ -115,7 +140,7 @@ public class LobbyBootstrap : MonoBehaviour
         if (GUI.Button(new Rect(x + 20, y + 137, w - 40, 28), "Solo spielen", UITheme.ButtonStyle))
             StartSolo();
 
-        GUI.Label(new Rect(x + 20, y + 173, w - 40, 20), "Unity Relay Beitrittscode:", UITheme.LabelStyle);
+        GUI.Label(new Rect(x + 20, y + 173, w - 40, 20), "Relay-Code (für verschiedene Netzwerke/Internet):", UITheme.LabelStyle);
         relayJoinCodeInput = GUI.TextField(new Rect(x + 20, y + 193, w - 40, 25), relayJoinCodeInput);
 
         if (GUI.Button(new Rect(x + 20, y + 225, (w - 50) / 2, 28), "Relay hosten", UITheme.ButtonStyle))
@@ -167,15 +192,25 @@ public class LobbyBootstrap : MonoBehaviour
     void StartLanHost()
     {
         transport.SetConnectionData("0.0.0.0", port);
-        NetworkManager.Singleton.StartHost();
-        statusMessage = "Host gestartet auf Port " + port;
+        bool started = NetworkManager.Singleton.StartHost();
+        statusMessage = started
+            ? "Host gestartet auf Port " + port
+            : "Hosten fehlgeschlagen (Port " + port + " evtl. belegt).";
     }
 
     void StartLanClient()
     {
         transport.SetConnectionData(ipAddress, port);
-        NetworkManager.Singleton.StartClient();
-        statusMessage = "Verbinde mit " + ipAddress + " ...";
+        bool started = NetworkManager.Singleton.StartClient();
+        if (started)
+        {
+            statusMessage = "Verbinde mit " + ipAddress + " ...";
+            connectDeadline = Time.time + ConnectTimeoutSeconds;
+        }
+        else
+        {
+            statusMessage = "Verbindung konnte nicht gestartet werden.";
+        }
     }
 
     void StartSolo()
