@@ -3,6 +3,15 @@ using UnityEngine;
 
 public class SettingsMenu : MonoBehaviour
 {
+    const string VolumePrefKey = "MasterVolume";
+    private float volume = 1f;
+
+    void Awake()
+    {
+        volume = PlayerPrefs.GetFloat(VolumePrefKey, 1f);
+        AudioListener.volume = volume;
+    }
+
     void OnGUI()
     {
         if (MainMenu.Current != MenuScreen.Settings)
@@ -11,13 +20,24 @@ public class SettingsMenu : MonoBehaviour
         UITheme.EnsureInit();
 
         float w = 380f;
-        float h = 380f;
+        float h = 420f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
         GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
         GUI.Label(new Rect(x, y + 12, w, 28), "Einstellungen", UITheme.TitleStyle);
         float curY = y + 55f;
+
+        GUI.Label(new Rect(x + 20, curY, w - 40, 20), $"Lautstärke: {Mathf.RoundToInt(volume * 100f)}%", UITheme.LabelStyle);
+        curY += 22f;
+        float newVolume = GUI.HorizontalSlider(new Rect(x + 20, curY + 8, w - 40, 20), volume, 0f, 1f);
+        if (!Mathf.Approximately(newVolume, volume))
+        {
+            volume = newVolume;
+            AudioListener.volume = volume;
+            PlayerPrefs.SetFloat(VolumePrefKey, volume);
+        }
+        curY += 36f;
 
         GUI.Label(new Rect(x + 20, curY, w - 40, 20), "Monitor:", UITheme.LabelStyle);
         curY += 22f;

@@ -443,6 +443,17 @@ public static class SceneBuilder
                 tile.transform.SetParent(visualRoot.transform);
                 tile.transform.localScale = Vector3.one * tileScale;
                 tile.transform.rotation = Quaternion.Euler(0f, ((gx + gz) % 4) * 90f, 0f);
+
+                var renderers = tile.GetComponentsInChildren<Renderer>();
+                if (renderers.Length > 0)
+                {
+                    Bounds bounds = renderers[0].bounds;
+                    foreach (var r in renderers)
+                        bounds.Encapsulate(r.bounds);
+                    float topOffset = bounds.max.y - tile.transform.position.y;
+                    tile.transform.position -= new Vector3(0f, topOffset, 0f);
+                }
+
                 foreach (var col in tile.GetComponentsInChildren<Collider>())
                     Object.DestroyImmediate(col);
             }
