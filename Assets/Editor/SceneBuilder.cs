@@ -20,6 +20,9 @@ public static class SceneBuilder
     static float actualTopHeight = TopHeight;
     const string KitPath = "Assets/KenneyKit/";
     const string NatureKitPath = "Assets/NatureKit/";
+    const string SpaceKitPath = "Assets/SpaceKit/";
+
+    static Material spaceMaterial;
 
     static Material kenneyMaterial;
 
@@ -76,6 +79,11 @@ public static class SceneBuilder
         return LoadOrCreateMaterial(ref kenneyMaterial, "Assets/KenneyMaterial.mat", KitPath + "Textures/colormap.png", 0.15f);
     }
 
+    static Material GetSpaceMaterial()
+    {
+        return LoadOrCreateMaterial(ref spaceMaterial, "Assets/SpaceMaterial.mat", SpaceKitPath + "Textures/colormap.png", 0.4f);
+    }
+
     static GameObject InstantiateModel(string basePath, Material mat, string modelName, Vector3 pos)
     {
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(basePath + modelName + ".fbx");
@@ -97,6 +105,11 @@ public static class SceneBuilder
     static GameObject InstantiateKenney(string modelName, Vector3 pos)
     {
         return InstantiateModel(KitPath, GetKenneyMaterial(), modelName, pos);
+    }
+
+    static GameObject InstantiateSpaceKit(string modelName, Vector3 pos)
+    {
+        return InstantiateModel(SpaceKitPath, GetSpaceMaterial(), modelName, pos);
     }
 
     static GameObject InstantiateNature(string modelName, Vector3 pos)
@@ -1236,6 +1249,8 @@ public static class SceneBuilder
         return block;
     }
 
+    static readonly string[] SpaceStationPieces = { "room-small", "room-large", "corridor", "corridor-corner", "gate", "gate-door", "stairs" };
+
     // Decorative floating islands themed to each of the five worlds, ringed around the tower at
     // that world's height band. Purely cosmetic (no colliders) - gives each section a distinct
     // identity as you climb, matching the reference art's floating-island look.
@@ -1308,10 +1323,24 @@ public static class SceneBuilder
                             shard.transform.rotation = Quaternion.Euler(Random.Range(-25f, 25f), Random.Range(0f, 360f), Random.Range(-25f, 25f));
                         }
                         break;
-                    default: // Space: dark asteroids + purple crystals
+                    default: // Space: dark asteroids + purple crystals + tumbling station wreckage
                         MakeAmbienceBlock(island.transform, islandPos, new Vector3(baseW * 0.8f, baseW * 0.7f, baseW * 0.8f), asteroid);
                         if (Random.value < 0.6f)
                             MakeAmbienceBlock(island.transform, islandPos + Vector3.up * baseW * 0.4f, new Vector3(0.7f, Random.Range(1.5f, 3f), 0.7f), crystalPurple);
+                        if (Random.value < 0.45f)
+                        {
+                            string pieceName = SpaceStationPieces[Random.Range(0, SpaceStationPieces.Length)];
+                            Vector3 piecePos = islandPos + new Vector3(Random.Range(-2f, 2f), Random.Range(0.5f, 2f), Random.Range(-2f, 2f));
+                            GameObject piece = InstantiateSpaceKit(pieceName, piecePos);
+                            if (piece != null)
+                            {
+                                piece.transform.SetParent(island.transform);
+                                piece.transform.rotation = Quaternion.Euler(Random.Range(-20f, 20f), Random.Range(0f, 360f), Random.Range(-15f, 50f));
+                                piece.transform.localScale = Vector3.one * Random.Range(1.2f, 2f);
+                                foreach (var col in piece.GetComponentsInChildren<Collider>())
+                                    Object.DestroyImmediate(col);
+                            }
+                        }
                         break;
                 }
             }
