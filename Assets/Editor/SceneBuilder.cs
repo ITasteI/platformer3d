@@ -1809,7 +1809,9 @@ public static class SceneBuilder
         {
             float t = i / (float)(PlatformCount - 1);
             bool earlySection = i < 4;
-            int block = i / 8;
+            // Smaller flavor blocks (3 instead of 8) so mechanics mix constantly, Crash-style, instead
+            // of long monotonous runs of one platform type.
+            int block = i / 3;
             bool isCheckpoint = i > 0 && i % CheckpointInterval == 0;
 
             bool isRestStop = !earlySection && !isCheckpoint && i % CheckpointInterval == CheckpointInterval - 1;
@@ -1965,6 +1967,14 @@ public static class SceneBuilder
                 // side as a small optional reach (jump-safety of the main path is untouched).
                 if (!earlySection && !isRestStop && i % 8 == 4)
                     CreateCrate(pos + perpSide * 0.9f + new Vector3(0f, 0.75f, 0f), i, 5);
+
+                // Sparse, avoidable Crash-style dangers to the side: telegraphed pop-up spikes and a
+                // TNT crate. Kept off the main landing spot and rare, so they add tension, not unfair
+                // deaths.
+                if (!earlySection && !isRestStop && i % 17 == 8)
+                    CreatePopupSpike(pos + perpSide * 0.6f + new Vector3(0f, 0.05f, 0f), i);
+                if (!earlySection && !isRestStop && i % 23 == 11)
+                    CreateTntCrate(pos - perpSide * 0.8f + new Vector3(0f, 0.6f, 0f), i);
             }
 
             if (i % 3 == 1 && !isCheckpoint)
@@ -2409,6 +2419,30 @@ public static class SceneBuilder
         col.isTrigger = true;
         var c = crate.AddComponent<Crate>();
         c.coins = coins;
+    }
+
+    // Telegraphed pop-up spikes (rise/retract on a timer) - avoidable side hazard, not a forced death.
+    static void CreatePopupSpike(Vector3 pos, int index)
+    {
+        GameObject spike = InstantiateKenney("trap-spikes", pos);
+        spike.name = "PopupSpike_" + index;
+        spike.transform.localScale = Vector3.one * 1.1f;
+        var col = AddSolidCollider(spike);
+        col.isTrigger = true;
+        var ps = spike.AddComponent<PopupSpike>();
+        ps.phaseOffset = index * 0.5f;
+    }
+
+    // TNT crate (Crash-style): a clearly-telegraphed bomb; touching it is lethal. Sits to the side.
+    static void CreateTntCrate(Vector3 pos, int index)
+    {
+        GameObject tnt = InstantiateKenney("bomb", pos);
+        tnt.name = "TntCrate_" + index;
+        tnt.transform.localScale = Vector3.one * 1.1f;
+        var col = AddSolidCollider(tnt);
+        col.isTrigger = true;
+        var h = tnt.AddComponent<Hazard>();
+        h.spins = false;
     }
 
     static void CreateBouncePad(Vector3 pos, int index)
