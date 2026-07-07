@@ -313,6 +313,8 @@ public static class SceneBuilder
 
     // Blends between the day (Blue Sky) and night (dark, pink-tinted nebula) cubemaps -
     // ZoneAtmosphere drives _CubemapTransition per zone so Sternenkrone shows the night sky.
+    const string SkyboxMaterialPath = "Assets/SkyboxMaterial.mat";
+
     static Material CreateSkyboxMaterial()
     {
         Shader blendShader = Shader.Find("Skybox/Cubemap Blend");
@@ -327,7 +329,15 @@ public static class SceneBuilder
             return fallback;
         }
 
-        Material sky = new Material(blendShader);
+        // Must be a persistent asset (not just an in-memory Material) or the reference can be
+        // lost between the editor session that built the scene and the actual player build.
+        Material sky = AssetDatabase.LoadAssetAtPath<Material>(SkyboxMaterialPath);
+        if (sky == null || sky.shader != blendShader)
+        {
+            sky = new Material(blendShader);
+            AssetDatabase.CreateAsset(sky, SkyboxMaterialPath);
+        }
+
         Cubemap daySky = AssetDatabase.LoadAssetAtPath<Cubemap>(SkyboxCubemapPath);
         Cubemap nightSky = AssetDatabase.LoadAssetAtPath<Cubemap>(SkyboxNightCubemapPath);
         sky.SetTexture("_Tex", daySky);
@@ -352,6 +362,7 @@ public static class SceneBuilder
         sky.SetFloat("_FogFill", 0f);
         sky.SetFloat("_FogPosition", 0f);
 
+        EditorUtility.SetDirty(sky);
         return sky;
     }
 
@@ -1217,14 +1228,16 @@ public static class SceneBuilder
     {
         Random.InitState(2024);
         GameObject root = new GameObject("MountainRange");
-        int count = 30;
+        // Count and minimum base radius are sized so neighboring mountains always overlap at
+        // any radius in range - no gaps to see the void through between peaks.
+        int count = 44;
 
         for (int i = 0; i < count; i++)
         {
-            float angle = (i / (float)count) * Mathf.PI * 2f + Random.Range(-0.12f, 0.12f);
+            float angle = (i / (float)count) * Mathf.PI * 2f + Random.Range(-0.08f, 0.08f);
             float radius = Random.Range(260f, 440f);
             float height = Random.Range(90f, 220f);
-            float baseRadius = Random.Range(40f, 80f);
+            float baseRadius = Random.Range(55f, 95f);
             Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, -10f, Mathf.Cos(angle) * radius);
 
             GameObject mountain = new GameObject("Mountain_" + i);
@@ -1609,7 +1622,27 @@ public static class SceneBuilder
             float safeMaxHeight = Mathf.Max(0.5f, MaxSingleJumpHeightAt(horizontalGap) * JumpSafetyMargin);
             stepHeight = Mathf.Min(stepHeight, safeMaxHeight);
 
-            angle += earlySection ? 0.4f : (0.45f + t * 0.2f);
+            // Path shape varies in phases instead of one continuous spiral: long straight-up
+            // stretches, regular spiral stretches, and faster loop-around stretches. Only the
+            // turning rate changes here - stepHeight/horizontalGap (and the jump-safety clamp
+            // above) are untouched, so this never affects fairness, only the route's shape.
+            if (earlySection)
+            {
+                angle += 0.4f;
+            }
+            else
+            {
+                const int phaseLength = 24;
+                int phase = (i / phaseLength) % 3;
+                float angleIncrement;
+                switch (phase)
+                {
+                    case 0: angleIncrement = 0.45f + t * 0.2f; break; // spiral
+                    case 1: angleIncrement = 0.06f; break; // mostly straight up
+                    default: angleIncrement = 0.95f + t * 0.25f; break; // loop around
+                }
+                angle += angleIncrement;
+            }
             Vector3 dir = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
             Vector3 pos = prevPos + dir * horizontalGap;
             pos.y = prevPos.y + stepHeight;
