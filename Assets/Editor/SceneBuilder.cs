@@ -512,12 +512,42 @@ public static class SceneBuilder
         fxRenderer.material = fxMat;
         fx.Stop();
 
+        // Skin aura emitter - themed particles (fire/ice/lightning/nature/shadow) that surround the
+        // character while a themed skin is worn. PlayerCosmetics configures it per equipped skin.
+        GameObject auraGO = new GameObject("SkinAura");
+        auraGO.transform.SetParent(root.transform);
+        auraGO.transform.localPosition = new Vector3(0f, 0.9f, 0f);
+        var aura = auraGO.AddComponent<ParticleSystem>();
+        var auraMain = aura.main;
+        auraMain.loop = true;
+        auraMain.playOnAwake = false;
+        auraMain.startLifetime = 1f;
+        auraMain.startSpeed = 1f;
+        auraMain.startSize = 0.2f;
+        auraMain.simulationSpace = ParticleSystemSimulationSpace.World;
+        auraMain.maxParticles = 300;
+        var auraEmission = aura.emission;
+        auraEmission.rateOverTime = 0f;
+        var auraShape = aura.shape;
+        auraShape.shapeType = ParticleSystemShapeType.Sphere;
+        auraShape.radius = 0.4f;
+        var auraRenderer = auraGO.GetComponent<ParticleSystemRenderer>();
+        Shader auraShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (auraShader == null)
+            auraShader = Shader.Find("Sprites/Default");
+        var auraMat = new Material(auraShader);
+        if (auraMat.HasProperty("_BaseColor"))
+            auraMat.SetColor("_BaseColor", Color.white);
+        auraRenderer.material = auraMat;
+        aura.Stop();
+
         var cosmetics = root.AddComponent<PlayerCosmetics>();
         cosmetics.modelObjects = modelObjects;
         cosmetics.modelIds = modelNames.ToArray();
         cosmetics.playerController = playerController;
         cosmetics.trail = trail;
         cosmetics.effectParticles = fx;
+        cosmetics.skinAura = aura;
 
         GameObject nameTagGO = new GameObject("NameTag");
         nameTagGO.transform.SetParent(root.transform);

@@ -106,6 +106,78 @@ public static class CosmeticApplier
         }
     }
 
+    // Configures a character's themed skin aura (fire/ice/lightning/nature/shadow). Empty theme
+    // disables it. Uses the soft glow sprite so it reads as real fire/ice/etc., not blocky pixels.
+    public static void ApplyAura(ParticleSystem aura, string theme)
+    {
+        if (aura == null)
+            return;
+
+        var emission = aura.emission;
+        if (string.IsNullOrEmpty(theme))
+        {
+            emission.rateOverTime = 0f;
+            aura.Clear();
+            aura.Stop();
+            return;
+        }
+
+        var main = aura.main;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        var shape = aura.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        var rot = aura.rotationOverLifetime;
+        var sol = aura.sizeOverLifetime;
+        var psr = aura.GetComponent<ParticleSystemRenderer>();
+
+        // Per-theme look. Direction is driven by gravity (negative rises) + speed, so no orientation
+        // juggling is needed.
+        Color a, b;
+        float size, speed, life, gravity, rate, spinDeg, endSize, radius;
+        bool additive;
+        switch (theme)
+        {
+            case "fire": // rising glowing embers
+                a = new Color(1f, 0.72f, 0.16f); b = new Color(0.9f, 0.12f, 0f);
+                size = 0.22f; speed = 1.6f; life = 0.7f; gravity = -0.55f; rate = 40f; spinDeg = 60f; endSize = 0.1f; radius = 0.3f; additive = true;
+                break;
+            case "ice": // slow falling frost sparkles
+                a = new Color(0.85f, 0.97f, 1f); b = new Color(0.35f, 0.65f, 0.95f);
+                size = 0.14f; speed = 0.4f; life = 1.5f; gravity = 0.5f; rate = 26f; spinDeg = 0f; endSize = 0.7f; radius = 0.42f; additive = true;
+                break;
+            case "lightning": // fast erratic bright sparks
+                a = new Color(1f, 1f, 0.6f); b = new Color(0.7f, 0.85f, 1f);
+                size = 0.09f; speed = 3.4f; life = 0.3f; gravity = 0f; rate = 55f; spinDeg = 720f; endSize = 0.05f; radius = 0.35f; additive = true;
+                break;
+            case "nature": // gently tumbling leaves
+                a = new Color(0.4f, 0.8f, 0.3f); b = new Color(0.7f, 0.6f, 0.25f);
+                size = 0.16f; speed = 0.5f; life = 1.7f; gravity = 0.12f; rate = 16f; spinDeg = 120f; endSize = 1f; radius = 0.45f; additive = false;
+                break;
+            default: // "shadow" - slow rising dark smoke
+                a = new Color(0.35f, 0.12f, 0.55f); b = new Color(0.06f, 0.04f, 0.1f);
+                size = 0.34f; speed = 0.5f; life = 1.4f; gravity = -0.2f; rate = 22f; spinDeg = 40f; endSize = 1.7f; radius = 0.4f; additive = false;
+                break;
+        }
+
+        main.startColor = new ParticleSystem.MinMaxGradient(a, b);
+        main.startSize = size;
+        main.startSpeed = speed;
+        main.startLifetime = life;
+        main.gravityModifier = gravity;
+        emission.rateOverTime = rate;
+        shape.radius = radius;
+        rot.enabled = Mathf.Abs(spinDeg) > 0.01f;
+        rot.z = new ParticleSystem.MinMaxCurve(spinDeg * Mathf.Deg2Rad);
+        sol.enabled = true;
+        sol.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, Mathf.Max(0.01f, endSize)));
+        if (psr != null)
+            psr.material = additive ? AdditiveMat : AlphaMat;
+
+        if (!aura.isPlaying)
+            aura.Play();
+    }
+
     // Shared particle blend materials (color comes from the system's startColor, so a single white
     // alpha + additive material serves every effect).
     static Material alphaMat;

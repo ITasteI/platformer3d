@@ -16,6 +16,7 @@ public class PlayerCosmetics : NetworkBehaviour
     public string[] modelIds;
     public TrailRenderer trail;
     public ParticleSystem effectParticles;
+    public ParticleSystem skinAura;   // themed aura tied to the equipped skin (fire/ice/...)
     public PlayerController playerController;
 
     private readonly NetworkVariable<FixedString32Bytes> equippedSkin = new NetworkVariable<FixedString32Bytes>(
@@ -106,8 +107,9 @@ public class PlayerCosmetics : NetworkBehaviour
                 playerController.animator = modelAnimators[index];
         }
 
-        // Recolor the active model.
+        // Recolor the active model + drive its themed aura.
         CosmeticApplier.ApplySkin(modelMaterials[index], skinId);
+        CosmeticApplier.ApplyAura(skinAura, skin.AuraTheme);
     }
 
     int FindModel(string modelId)

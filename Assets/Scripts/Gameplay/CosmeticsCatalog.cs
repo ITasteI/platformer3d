@@ -12,6 +12,10 @@ public struct SkinDef
     // Which Kenney character mesh this skin uses (they share one rig, so the animator works on all).
     // Empty/null = the default base character. Lets skins be genuinely different shapes, not recolors.
     public string Model;
+
+    // Themed particle aura that surrounds the character while this skin is worn, giving each skin
+    // its own identity beyond colour: "fire", "ice", "lightning", "nature", "shadow" (empty = none).
+    public string AuraTheme;
 }
 
 public struct EffectDef
@@ -49,12 +53,13 @@ public static class CosmeticsCatalog
         new SkinDef { Id = "green", Name = "Grün", Price = 40, BaseColor = new Color(0.25f, 0.75f, 0.3f), HasEmission = false, Model = "character-oobi" },
         new SkinDef { Id = "blue", Name = "Blau", Price = 40, BaseColor = new Color(0.25f, 0.5f, 0.95f), HasEmission = false, Model = "character-oobi" },
         new SkinDef { Id = "red", Name = "Rot", Price = 40, BaseColor = new Color(0.85f, 0.25f, 0.25f), HasEmission = false, Model = "character-oobi" },
-        // Premium tiers - each a DIFFERENT character model plus glowing HDR emission.
-        new SkinDef { Id = "gold", Name = "Goldwächter", Price = 150, BaseColor = new Color(0.95f, 0.8f, 0.35f), HasEmission = true, EmissionColor = new Color(1.1f, 0.75f, 0.1f), Model = "character-oopi" },
-        new SkinDef { Id = "lava", Name = "Lavagolem", Price = 300, BaseColor = new Color(0.25f, 0.08f, 0.05f), HasEmission = true, EmissionColor = new Color(2.4f, 0.5f, 0.06f), Model = "character-oodi" },
-        new SkinDef { Id = "ice", Name = "Eiswicht", Price = 300, BaseColor = new Color(0.7f, 0.9f, 0.98f), HasEmission = true, EmissionColor = new Color(0.45f, 0.85f, 1.2f), Model = "character-ooli" },
-        new SkinDef { Id = "neon", Name = "Neonbot", Price = 500, BaseColor = new Color(0.05f, 0.05f, 0.08f), HasEmission = true, EmissionColor = new Color(2.0f, 0.15f, 2.4f), Model = "character-oozi" },
-        new SkinDef { Id = "galaxy", Name = "Galaxywächter", Price = 750, BaseColor = new Color(0.12f, 0.05f, 0.25f), HasEmission = true, EmissionColor = new Color(0.9f, 0.35f, 1.9f), Model = "character-oopi" },
+        // Themed premium skins - each a DIFFERENT character, glowing emission AND its own particle
+        // aura (fire/ice/lightning/nature/shadow), so it reads as a complete identity, not a recolor.
+        new SkinDef { Id = "fire", Name = "Feuer", Price = 150, BaseColor = new Color(0.6f, 0.14f, 0.04f), HasEmission = true, EmissionColor = new Color(2.4f, 0.55f, 0.06f), Model = "character-oodi", AuraTheme = "fire" },
+        new SkinDef { Id = "ice", Name = "Eis", Price = 200, BaseColor = new Color(0.55f, 0.82f, 0.96f), HasEmission = true, EmissionColor = new Color(0.4f, 0.82f, 1.3f), Model = "character-ooli", AuraTheme = "ice" },
+        new SkinDef { Id = "lightning", Name = "Blitz", Price = 300, BaseColor = new Color(0.9f, 0.85f, 0.3f), HasEmission = true, EmissionColor = new Color(1.7f, 1.5f, 0.35f), Model = "character-oozi", AuraTheme = "lightning" },
+        new SkinDef { Id = "nature", Name = "Natur", Price = 400, BaseColor = new Color(0.22f, 0.6f, 0.22f), HasEmission = false, Model = "character-oopi", AuraTheme = "nature" },
+        new SkinDef { Id = "shadow", Name = "Schatten", Price = 600, BaseColor = new Color(0.08f, 0.06f, 0.12f), HasEmission = true, EmissionColor = new Color(0.4f, 0.1f, 0.7f), Model = "character-oobi", AuraTheme = "shadow" },
     };
 
     public static readonly EffectDef[] Effects =
