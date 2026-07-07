@@ -357,8 +357,11 @@ public class PlayerController : NetworkBehaviour
             return;
 
         UITheme.EnsureInit();
+        // Below the GameManager HUD (coin/time/height chips + zone bar occupy y≈16..178).
         string status = AbilityReady ? "Flug (Q): bereit" : $"Flug (Q): {CooldownRemaining:0}s";
-        GUI.Label(new Rect(20, 132, 300, 30), status, UITheme.HudStyle);
+        var flyStyle = new GUIStyle(UITheme.LabelStyle) { fontSize = 15, fontStyle = FontStyle.Bold };
+        flyStyle.normal.textColor = AbilityReady ? UITheme.Positive : new Color(0.8f, 0.8f, 0.85f);
+        GUI.Label(new Rect(22, 188, 300, 24), status, flyStyle);
     }
 
     void HandleGroundState()

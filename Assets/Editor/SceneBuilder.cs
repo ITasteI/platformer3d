@@ -371,26 +371,27 @@ public static class SceneBuilder
         var lightGO = new GameObject("Sun");
         var light = lightGO.AddComponent<Light>();
         light.type = LightType.Directional;
-        light.intensity = 1.2f;
-        light.color = new Color(1f, 0.93f, 0.8f);
+        light.intensity = 0.8f;
+        light.color = new Color(1f, 0.66f, 0.42f);
         light.shadows = LightShadows.Soft;
-        lightGO.transform.rotation = Quaternion.Euler(45f, -30f, 0f);
+        // Low dusk sun angle for long, cozy shadows (ZoneAtmosphere drives color/intensity).
+        lightGO.transform.rotation = Quaternion.Euler(16f, -40f, 0f);
 
         Material sky = CreateSkyboxMaterial();
         RenderSettings.skybox = sky;
 
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-        RenderSettings.ambientSkyColor = new Color(0.6f, 0.65f, 0.75f);
-        RenderSettings.ambientEquatorColor = new Color(0.5f, 0.48f, 0.45f);
-        RenderSettings.ambientGroundColor = new Color(0.3f, 0.28f, 0.25f);
+        RenderSettings.ambientSkyColor = new Color(0.36f, 0.34f, 0.46f);
+        RenderSettings.ambientEquatorColor = new Color(0.34f, 0.3f, 0.34f);
+        RenderSettings.ambientGroundColor = new Color(0.22f, 0.2f, 0.22f);
 
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Linear;
-        RenderSettings.fogColor = new Color(0.6f, 0.55f, 0.5f);
-        // Wide enough that distant mountains (radius 260-420) read as hazy silhouettes with
-        // real color/shading instead of flattening into a solid fog-colored blob.
-        RenderSettings.fogStartDistance = 60f;
-        RenderSettings.fogEndDistance = 480f;
+        RenderSettings.fogColor = new Color(0.17f, 0.16f, 0.27f);
+        // Tighter than before so the oversized flat ground fades into cozy dusk haze instead of
+        // stretching out bright and empty; near mountains still read through the haze.
+        RenderSettings.fogStartDistance = 40f;
+        RenderSettings.fogEndDistance = 360f;
 
         return light;
     }
@@ -430,6 +431,28 @@ public static class SceneBuilder
 
         var admin = root.AddComponent<AdminController>();
         admin.player = playerController;
+
+        // Cosmetic trail (equippable effect). Sits at the player's base, thin/short so it never
+        // blocks the view. PlayerCosmetics enables/colors it based on the equipped effect.
+        GameObject trailGO = new GameObject("CosmeticTrail");
+        trailGO.transform.SetParent(root.transform);
+        trailGO.transform.localPosition = new Vector3(0f, 0.4f, 0f);
+        TrailRenderer trail = trailGO.AddComponent<TrailRenderer>();
+        trail.time = 0.45f;
+        trail.startWidth = 0.35f;
+        trail.endWidth = 0f;
+        trail.minVertexDistance = 0.08f;
+        trail.autodestruct = false;
+        trail.emitting = false;
+        trail.enabled = false;
+        Shader trailShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (trailShader == null)
+            trailShader = Shader.Find("Sprites/Default");
+        trail.material = new Material(trailShader);
+
+        var cosmetics = root.AddComponent<PlayerCosmetics>();
+        cosmetics.characterVisual = visual.transform;
+        cosmetics.trail = trail;
 
         GameObject nameTagGO = new GameObject("NameTag");
         nameTagGO.transform.SetParent(root.transform);
@@ -711,15 +734,17 @@ public static class SceneBuilder
         }
         terrainData.SetHeights(0, 0, heights);
 
-        Texture2D grassTex = CreateSolidTexture("GrassTerrainTex", new Color(0.3f, 0.4f, 0.2f), new Color(0.38f, 0.48f, 0.26f));
+        // Darker, dusk-muted grass (new asset name so the color change actually regenerates).
+        Texture2D grassTex = CreateSolidTexture("GrassTerrainDusk", new Color(0.15f, 0.19f, 0.13f), new Color(0.2f, 0.25f, 0.16f));
         TerrainLayer layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>("Assets/GrassTerrainLayer.asset");
         if (layer == null)
         {
             layer = new TerrainLayer();
-            layer.diffuseTexture = grassTex;
             layer.tileSize = new Vector2(8f, 8f);
             AssetDatabase.CreateAsset(layer, "Assets/GrassTerrainLayer.asset");
         }
+        layer.diffuseTexture = grassTex;   // always refresh so tint changes take effect
+        EditorUtility.SetDirty(layer);
         terrainData.terrainLayers = new[] { layer };
 
         GameObject terrainGO = Terrain.CreateTerrainGameObject(terrainData);
@@ -1224,58 +1249,59 @@ public static class SceneBuilder
         return snowCapMaterial;
     }
 
+    static readonly string[] MountainPrefabPaths =
+    {
+        SkydenPrefabPath + "Mountain 1.prefab",
+        SkydenPrefabPath + "Mountain 2 .prefab",
+        PurePolyPrefabPath + "PP_Forest_Mountain_Moss_01.prefab",
+        PurePolyPrefabPath + "PP_Forest_Mountain_Moss_02.prefab",
+    };
+
+    // Combined world-space Y-height of all renderers under an object (at its current transform).
+    static float RendererHeight(GameObject go)
+    {
+        var renderers = go.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
+            return 0f;
+        Bounds b = renderers[0].bounds;
+        foreach (var r in renderers)
+            b.Encapsulate(r.bounds);
+        return b.size.y;
+    }
+
+    // Real low-poly mountain models instead of the old procedural grey cones. Each is normalized
+    // to a target world height via its renderer bounds, so the unknown native model scale doesn't
+    // matter. Densely ringed with overlap so no gaps show the void between peaks.
     static void CreateMountainRing()
     {
         Random.InitState(2024);
         GameObject root = new GameObject("MountainRange");
-        // Count and minimum base radius are sized so neighboring mountains always overlap at
-        // any radius in range - no gaps to see the void through between peaks.
-        int count = 44;
+        int count = 46;
 
         for (int i = 0; i < count; i++)
         {
-            float angle = (i / (float)count) * Mathf.PI * 2f + Random.Range(-0.08f, 0.08f);
-            float radius = Random.Range(260f, 440f);
-            float height = Random.Range(90f, 220f);
-            float baseRadius = Random.Range(55f, 95f);
-            Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, -10f, Mathf.Cos(angle) * radius);
+            float angle = (i / (float)count) * Mathf.PI * 2f + Random.Range(-0.06f, 0.06f);
+            float radius = Random.Range(250f, 430f);
 
-            GameObject mountain = new GameObject("Mountain_" + i);
-            mountain.transform.SetParent(root.transform);
-            mountain.transform.position = pos;
-            mountain.isStatic = true;
+            string path = MountainPrefabPaths[i % MountainPrefabPaths.Length];
+            GameObject m = InstantiatePrefabByPath(path);
+            if (m == null)
+                continue;
 
-            // Two overlapping jagged cones per peak read as a small ridge instead of a lone
-            // symmetric pyramid, and give each mountain a secondary shoulder peak.
-            GameObject main = new GameObject("Rock");
-            main.transform.SetParent(mountain.transform);
-            main.transform.localPosition = Vector3.zero;
-            var mainFilter = main.AddComponent<MeshFilter>();
-            mainFilter.sharedMesh = BuildJaggedPeakMesh(baseRadius, height, 10, i * 13.1f);
-            var mainRenderer = main.AddComponent<MeshRenderer>();
-            mainRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mainRenderer.sharedMaterial = GetRockMaterial();
+            m.transform.position = Vector3.zero;
+            m.transform.rotation = Quaternion.identity;
+            m.transform.localScale = Vector3.one;
+            float nativeHeight = RendererHeight(m);
+            float targetHeight = Random.Range(85f, 190f);
+            float scale = nativeHeight > 0.01f ? targetHeight / nativeHeight : 20f;
 
-            GameObject shoulder = new GameObject("Shoulder");
-            shoulder.transform.SetParent(mountain.transform);
-            float shoulderAngle = Random.Range(0f, Mathf.PI * 2f);
-            shoulder.transform.localPosition = new Vector3(Mathf.Sin(shoulderAngle) * baseRadius * 0.7f, 0f, Mathf.Cos(shoulderAngle) * baseRadius * 0.7f);
-            var shoulderFilter = shoulder.AddComponent<MeshFilter>();
-            shoulderFilter.sharedMesh = BuildJaggedPeakMesh(baseRadius * 0.6f, height * Random.Range(0.55f, 0.8f), 8, i * 13.1f + 90f);
-            var shoulderRenderer = shoulder.AddComponent<MeshRenderer>();
-            shoulderRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            shoulderRenderer.sharedMaterial = GetRockMaterial();
-
-            // Snow cap: a small white cone nested at the very top of the main peak.
-            float snowHeight = height * Random.Range(0.22f, 0.32f);
-            GameObject snow = new GameObject("SnowCap");
-            snow.transform.SetParent(mountain.transform);
-            snow.transform.localPosition = new Vector3(0f, height - snowHeight * 1.6f, 0f);
-            var snowFilter = snow.AddComponent<MeshFilter>();
-            snowFilter.sharedMesh = BuildJaggedPeakMesh(baseRadius * 0.42f, snowHeight * 2f, 8, i * 13.1f + 200f);
-            var snowRenderer = snow.AddComponent<MeshRenderer>();
-            snowRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            snowRenderer.sharedMaterial = GetSnowCapMaterial();
+            m.name = "Mountain_" + i;
+            m.transform.SetParent(root.transform);
+            m.transform.localScale = Vector3.one * scale;
+            m.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            // Sink the base a bit so it reads as rising out of the ground/haze.
+            m.transform.position = new Vector3(Mathf.Sin(angle) * radius, -targetHeight * 0.12f, Mathf.Cos(angle) * radius);
+            m.isStatic = true;
         }
     }
 
@@ -1726,7 +1752,25 @@ public static class SceneBuilder
             }
 
             if (i % 2 == 0 && !isCheckpoint)
-                CreateGem(pos + new Vector3(0f, 1.1f, 0f), i);
+            {
+                // Rare coins reward the riskier platform flavors (hazard/moving/floating/timed/
+                // bouncepad) instead of being scattered at random. Legendary coins are a rare,
+                // deliberate reach to the side of an otherwise-safe landing - a small optional
+                // risk, never an impossible jump (jump-safety clamp above is untouched).
+                CoinType coinType = CoinType.Normal;
+                bool isRiskyFlavor = flavor == 0 || flavor == 2 || flavor == 4 || flavor == 5 || flavor == 6;
+                if (!earlySection && isRiskyFlavor && i % 4 == 0)
+                    coinType = CoinType.Rare;
+
+                Vector3 coinOffset = new Vector3(0f, 1.1f, 0f);
+                if (!earlySection && !isRestStop && i % 60 == 30)
+                {
+                    coinType = CoinType.Legendary;
+                    coinOffset += perpSide * 1.2f;
+                }
+
+                CreateGem(pos + coinOffset, i, coinType);
+            }
 
             if (i % 3 == 1 && !isCheckpoint)
                 CreateClimbDecor(pos, i, t);
@@ -1927,15 +1971,39 @@ public static class SceneBuilder
         hazardComp.spins = modelName == "saw";
     }
 
-    static void CreateGem(Vector3 pos, int index)
+    // Normal coins keep the shared Kenney atlas look (cheap, batched). Rare/Legendary get a
+    // per-instance material clone so they can be tinted/glowing without affecting every other
+    // coin in the scene that still shares the one cached Kenney material.
+    static void CreateGem(Vector3 pos, int index, CoinType type = CoinType.Normal)
     {
         string modelName = GemModels[index % GemModels.Length];
         GameObject gem = InstantiateKenney(modelName, pos);
-        gem.name = "Gem_" + index;
-        gem.transform.localScale = Vector3.one * 1.2f;
+        gem.name = "Gem_" + index + "_" + type;
+
+        float scale = type == CoinType.Legendary ? 1.8f : (type == CoinType.Rare ? 1.45f : 1.2f);
+        gem.transform.localScale = Vector3.one * scale;
+
+        if (type != CoinType.Normal)
+        {
+            Color tint = type == CoinType.Legendary ? new Color(1.3f, 1.05f, 0.25f) : new Color(0.55f, 0.65f, 1.3f);
+            Color emission = type == CoinType.Legendary ? new Color(0.9f, 0.6f, 0.05f) : new Color(0.15f, 0.2f, 0.55f);
+
+            foreach (var rend in gem.GetComponentsInChildren<Renderer>())
+            {
+                Material unique = new Material(rend.sharedMaterial);
+                unique.SetColor("_BaseColor", tint);
+                unique.EnableKeyword("_EMISSION");
+                unique.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                unique.SetColor("_EmissionColor", emission);
+                rend.sharedMaterial = unique;
+            }
+        }
+
         var col = AddSolidCollider(gem);
         col.isTrigger = true;
-        gem.AddComponent<Coin>();
+        var coin = gem.AddComponent<Coin>();
+        coin.type = type;
+        coin.legendaryBaseScale = scale;
     }
 
     static void CreateBouncePad(Vector3 pos, int index)
@@ -2076,6 +2144,7 @@ public static class SceneBuilder
         var go = new GameObject("MainMenu");
         go.AddComponent<MainMenu>();
         go.AddComponent<SettingsMenu>();
+        go.AddComponent<ShopMenu>();
     }
 
     static void CreateTutorialOverlay()
@@ -2094,19 +2163,19 @@ public static class SceneBuilder
 
         atmosphere.zones = new[]
         {
-            // Wiesenland - warm grassy daylight, pure day sky. skyTint multiplies the cubemap
-            // (0.5,0.5,0.5 = neutral/unchanged), skyExposure brightens/dims it overall.
+            // Wiesenland - cozy dusk: deep blue-purple haze, warm low sun, sky partway to night,
+            // gentle drifting dust motes. Atmospheric/dark like requested, but still warm/cozy.
             new ZoneAtmosphere.Zone
             {
                 height = 0f,
-                fogColor = new Color(0.65f, 0.72f, 0.58f),
-                skyTint = new Color(0.52f, 0.5f, 0.46f),
-                skyExposure = 1f,
-                skyBlend = 0f,
-                lightColor = new Color(1f, 0.95f, 0.82f),
-                lightIntensity = 1.2f,
-                particleColor = new Color(1f, 1f, 1f, 0f),
-                particleRate = 0f,
+                fogColor = new Color(0.17f, 0.16f, 0.27f),
+                skyTint = new Color(0.34f, 0.3f, 0.4f),
+                skyExposure = 0.6f,
+                skyBlend = 0.4f,
+                lightColor = new Color(1f, 0.66f, 0.42f),
+                lightIntensity = 0.8f,
+                particleColor = new Color(1f, 0.82f, 0.55f, 0.5f),
+                particleRate = 7f,
             },
             // Vulkanfeld - hazy orange, drifting embers, still mostly day sky
             new ZoneAtmosphere.Zone

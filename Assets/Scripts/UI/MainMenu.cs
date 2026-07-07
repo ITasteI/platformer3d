@@ -6,6 +6,7 @@ public enum MenuScreen
     Main,
     Play,
     Settings,
+    Shop,
     QuitConfirm,
     RestartConfirm,
     Hidden,
@@ -38,7 +39,8 @@ public class MainMenu : MonoBehaviour
         if (Current == MenuScreen.Hidden)
             SetScreen(MenuScreen.Main);
         else if (Current == MenuScreen.QuitConfirm || Current == MenuScreen.RestartConfirm
-                 || Current == MenuScreen.Settings || Current == MenuScreen.Play)
+                 || Current == MenuScreen.Settings || Current == MenuScreen.Play
+                 || Current == MenuScreen.Shop)
             SetScreen(MenuScreen.Main);
         else if (HasActiveGame)
             SetScreen(MenuScreen.Hidden);
@@ -139,7 +141,7 @@ public class MainMenu : MonoBehaviour
         GUI.color = new Color(1f, 1f, 1f, FadeAlpha);
 
         float w = 340f;
-        float h = 300f;
+        float h = 356f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
@@ -151,14 +153,14 @@ public class MainMenu : MonoBehaviour
 
         bool wasEnabled = GUI.enabled;
         GUI.enabled = canContinue;
-        if (GUI.Button(new Rect(x + 30, y + 72, w - 60, 36), "▶ Fortsetzen", UITheme.ButtonStyle) && canContinue)
+        if (GUI.Button(new Rect(x + 30, y + 68, w - 60, 36), "▶ Fortsetzen", UITheme.ButtonStyle) && canContinue)
         {
             AudioManager.Instance?.PlayClick();
             SetScreen(HasActiveGame ? MenuScreen.Hidden : MenuScreen.Play);
         }
         GUI.enabled = wasEnabled;
 
-        if (GUI.Button(new Rect(x + 30, y + 114, w - 60, 36), "✚ Neues Spiel", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 30, y + 108, w - 60, 36), "✚ Neues Spiel", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             if (hasSave || HasActiveGame)
@@ -167,13 +169,19 @@ public class MainMenu : MonoBehaviour
                 SetScreen(MenuScreen.Play);
         }
 
-        if (GUI.Button(new Rect(x + 30, y + 156, w - 60, 36), "⚙ Einstellungen", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 30, y + 148, w - 60, 36), "🛍 Shop", UITheme.ButtonStyle))
+        {
+            AudioManager.Instance?.PlayClick();
+            SetScreen(MenuScreen.Shop);
+        }
+
+        if (GUI.Button(new Rect(x + 30, y + 188, w - 60, 36), "⚙ Einstellungen", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             SetScreen(MenuScreen.Settings);
         }
 
-        if (GUI.Button(new Rect(x + 30, y + 198, w - 60, 36), "✕ Spiel Beenden", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 30, y + 228, w - 60, 36), "✕ Spiel Beenden", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             SetScreen(MenuScreen.QuitConfirm);
