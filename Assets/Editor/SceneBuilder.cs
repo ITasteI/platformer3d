@@ -19,11 +19,9 @@ public static class SceneBuilder
     // instead of the old fixed 500 that the ~240m tower never climbed to.
     static float actualTopHeight = TopHeight;
     const string KitPath = "Assets/KenneyKit/";
-    const string CityKitPath = "Assets/CityKit/";
     const string NatureKitPath = "Assets/NatureKit/";
 
     static Material kenneyMaterial;
-    static Material cityMaterial;
 
     static void SetColor(GameObject go, Color color)
     {
@@ -78,11 +76,6 @@ public static class SceneBuilder
         return LoadOrCreateMaterial(ref kenneyMaterial, "Assets/KenneyMaterial.mat", KitPath + "Textures/colormap.png", 0.15f);
     }
 
-    static Material GetCityMaterial()
-    {
-        return LoadOrCreateMaterial(ref cityMaterial, "Assets/CityMaterial.mat", CityKitPath + "Textures/colormap.png", 0.1f);
-    }
-
     static GameObject InstantiateModel(string basePath, Material mat, string modelName, Vector3 pos)
     {
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(basePath + modelName + ".fbx");
@@ -104,11 +97,6 @@ public static class SceneBuilder
     static GameObject InstantiateKenney(string modelName, Vector3 pos)
     {
         return InstantiateModel(KitPath, GetKenneyMaterial(), modelName, pos);
-    }
-
-    static GameObject InstantiateCityProp(string modelName, Vector3 pos)
-    {
-        return InstantiateModel(CityKitPath, GetCityMaterial(), modelName, pos);
     }
 
     static GameObject InstantiateNature(string modelName, Vector3 pos)
@@ -232,10 +220,14 @@ public static class SceneBuilder
         CreateNetworkManagerAndLobby(playerPrefab, lobbyCam);
         CreateGround();
         CreateRiverWater();
-        CreateMountainRing();
+        CreateLake();
         CreateNatureScatter();
-        CreateJunkyardDecor();
-        CreateCityBackground();
+        CreateForestBelt();
+        CreateRockFormations();
+        CreateSpawnDecor();
+        CreateBackgroundIslands();
+        CreateDistantLandmark();
+        CreateMountainRing();
         Vector3 topPos = CreateTower();
         CreateClouds();
         CreateWorldAmbience();
@@ -558,10 +550,19 @@ public static class SceneBuilder
 
     const float WaterfallS = 0.37f;
 
+    // A still lake tucked on the side of the terrain the river's arc never sweeps through
+    // (river spans angle -110..110 deg; the lake sits around 180 deg, well clear of it).
+    static readonly Vector3 LakeCenter = new Vector3(18f, 0f, -138f);
+    const float LakeRadius = 30f;
+    const float LakeShoreWidth = 14f;
+    const float LakeBedNormalizedHeight = 0.015f;
+
+    const float GroundSize = 480f;
+
     static void CreateGround()
     {
-        const int resolution = 129;
-        const float size = 300f;
+        const int resolution = 257;
+        const float size = GroundSize;
         const float maxHeight = RiverMaxHeight;
 
         TerrainData terrainData = new TerrainData();
@@ -582,15 +583,22 @@ public static class SceneBuilder
                 float distFromCenter = new Vector2(worldX, worldZ).magnitude;
                 float flatten = Mathf.Clamp01((distFromCenter - 8f) / 20f);
 
-                float noise = Mathf.PerlinNoise(x * 0.045f + offsetX, z * 0.045f + offsetZ);
-                float noise2 = Mathf.PerlinNoise(x * 0.12f + offsetX, z * 0.12f + offsetZ) * 0.3f;
-                float h = (noise * 0.7f + noise2) * flatten * 0.55f;
+                // Multi-octave, world-space noise: large rolling hills/valleys, medium bumps,
+                // fine surface texture - instead of a single flat noise band.
+                float macro = Mathf.PerlinNoise(worldX * 0.006f + offsetX * 3f, worldZ * 0.006f + offsetZ * 3f);
+                float detail = Mathf.PerlinNoise(worldX * 0.05f + offsetX, worldZ * 0.05f + offsetZ);
+                float fine = Mathf.PerlinNoise(worldX * 0.14f + offsetX, worldZ * 0.14f + offsetZ);
+                float h = (macro * 0.5f + detail * 0.35f + fine * 0.15f) * flatten * 0.6f;
 
                 float distToRiver = DistanceToRiver(worldX, worldZ, out float riverS);
                 const float riverHalfWidth = 5f;
                 const float riverBankWidth = 9f;
                 float riverCarve = 1f - Mathf.Clamp01((distToRiver - riverHalfWidth) / riverBankWidth);
                 h = Mathf.Lerp(h, RiverBedNormalizedHeight(riverS), riverCarve);
+
+                float distToLake = Vector2.Distance(new Vector2(worldX, worldZ), new Vector2(LakeCenter.x, LakeCenter.z));
+                float lakeCarve = 1f - Mathf.Clamp01((distToLake - LakeRadius) / LakeShoreWidth);
+                h = Mathf.Lerp(h, LakeBedNormalizedHeight, lakeCarve);
 
                 heights[z, x] = h;
             }
@@ -740,6 +748,66 @@ public static class SceneBuilder
         pRenderer.material = mistMat;
     }
 
+    static Mesh BuildDiscMesh(float radius, int segments)
+    {
+        Vector3[] vertices = new Vector3[segments + 1];
+        vertices[0] = Vector3.zero;
+        for (int i = 0; i < segments; i++)
+        {
+            float a = (i / (float)segments) * Mathf.PI * 2f;
+            vertices[i + 1] = new Vector3(Mathf.Cos(a) * radius, 0f, Mathf.Sin(a) * radius);
+        }
+
+        int[] triangles = new int[segments * 3];
+        for (int i = 0; i < segments; i++)
+        {
+            int next = (i + 1) % segments;
+            triangles[i * 3 + 0] = 0;
+            triangles[i * 3 + 1] = i + 1;
+            triangles[i * 3 + 2] = next + 1;
+        }
+
+        Mesh mesh = new Mesh();
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    static readonly string[] LakeShoreProps = { "lily_large", "lily_small", "rock_smallB", "rock_smallD", "ground_riverRocks" };
+
+    static void CreateLake()
+    {
+        GameObject lake = new GameObject("Lake");
+        var filter = lake.AddComponent<MeshFilter>();
+        filter.sharedMesh = BuildDiscMesh(LakeRadius, 28);
+        var renderer = lake.AddComponent<MeshRenderer>();
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.sharedMaterial = GetWaterMaterial();
+        lake.transform.position = LakeCenter + Vector3.up * (LakeBedNormalizedHeight * RiverMaxHeight + 0.1f);
+        lake.isStatic = true;
+
+        Random.InitState(3131);
+        for (int i = 0; i < 14; i++)
+        {
+            float a = Random.Range(0f, Mathf.PI * 2f);
+            float r = LakeRadius * Random.Range(0.55f, 1.05f);
+            Vector3 pos = LakeCenter + new Vector3(Mathf.Sin(a) * r, 0f, Mathf.Cos(a) * r);
+            pos.y = SampleTerrainHeight(pos) + 0.05f;
+
+            string modelName = LakeShoreProps[Random.Range(0, LakeShoreProps.Length)];
+            GameObject prop = InstantiateNature(modelName, pos);
+            if (prop == null)
+                continue;
+
+            prop.name = "LakeShore_" + i;
+            prop.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            prop.transform.localScale = Vector3.one * Random.Range(0.8f, 1.4f);
+            prop.isStatic = true;
+        }
+    }
+
     static readonly string[] MeadowTrees = { "tree_default", "tree_oak", "tree_pineRoundA", "tree_pineTallA", "tree_small", "tree_fat" };
     static readonly string[] MeadowRocks = { "rock_smallA", "rock_smallC", "rock_largeB", "stone_smallA" };
     static readonly string[] MeadowGround = { "grass", "grass_large", "flower_purpleA", "flower_redA", "flower_yellowA", "mushroom_red", "mushroom_tan", "plant_bushSmall", "plant_flatShort" };
@@ -774,6 +842,100 @@ public static class SceneBuilder
             obj.transform.localScale = Vector3.one * scale;
             obj.isStatic = true;
             obj.AddComponent<DistanceCuller>().maxDistance = 90f;
+        }
+    }
+
+    static bool TooCloseToWater(Vector3 pos, float clearance)
+    {
+        float distRiver = DistanceToRiver(pos.x, pos.z, out _);
+        float distLake = Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(LakeCenter.x, LakeCenter.z)) - LakeRadius;
+        return distRiver < clearance || distLake < clearance;
+    }
+
+    static readonly string[] ForestTrees = { "tree_default", "tree_oak", "tree_pineTallA", "tree_pineTallB", "tree_pineTallC", "tree_fat", "tree_tall", "tree_detailed" };
+
+    // Fills the empty ring between the close-in meadow (out to ~65) and the mountain range
+    // (starting at 260) with clustered stands of trees instead of one uniform scatter -
+    // reads as an actual forest rather than props dropped on a plane.
+    static void CreateForestBelt()
+    {
+        Random.InitState(4242);
+        GameObject root = new GameObject("ForestBelt");
+        int clusterCount = 22;
+
+        for (int c = 0; c < clusterCount; c++)
+        {
+            float angle = Random.Range(0f, Mathf.PI * 2f);
+            float radius = Random.Range(75f, 195f);
+            Vector3 clusterCenter = new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+            if (TooCloseToWater(clusterCenter, 14f))
+                continue;
+
+            int treeCount = Random.Range(4, 9);
+            for (int t = 0; t < treeCount; t++)
+            {
+                Vector3 pos = clusterCenter + new Vector3(Random.Range(-10f, 10f), 0f, Random.Range(-10f, 10f));
+                if (TooCloseToWater(pos, 6f))
+                    continue;
+                pos.y = SampleTerrainHeight(pos);
+
+                string modelName = ForestTrees[Random.Range(0, ForestTrees.Length)];
+                GameObject tree = InstantiateNature(modelName, pos);
+                if (tree == null)
+                    continue;
+
+                tree.name = "ForestTree_" + c + "_" + t;
+                tree.transform.SetParent(root.transform);
+                tree.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+                tree.transform.localScale = Vector3.one * Random.Range(1.1f, 1.8f);
+                tree.isStatic = true;
+                tree.AddComponent<DistanceCuller>().maxDistance = 210f;
+            }
+        }
+    }
+
+    static readonly string[] RockFormationModels =
+    {
+        "cliff_large_rock", "cliff_block_rock", "cliff_diagonal_rock",
+        "rock_tallA", "rock_tallC", "rock_tallF", "stone_tallB", "stone_tallE",
+    };
+
+    // Clustered rock/cliff formations scattered through the same mid-ground ring as the forest
+    // belt, giving the horizon actual "Felsformationen" instead of only trees.
+    static void CreateRockFormations()
+    {
+        Random.InitState(9090);
+        GameObject root = new GameObject("RockFormations");
+        int clusterCount = 16;
+
+        for (int c = 0; c < clusterCount; c++)
+        {
+            float angle = (c / (float)clusterCount) * Mathf.PI * 2f + Random.Range(-0.2f, 0.2f);
+            float radius = Random.Range(75f, 210f);
+            Vector3 clusterCenter = new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+            if (TooCloseToWater(clusterCenter, 16f))
+                continue;
+
+            int rockCount = Random.Range(2, 5);
+            for (int r = 0; r < rockCount; r++)
+            {
+                Vector3 pos = clusterCenter + new Vector3(Random.Range(-6f, 6f), 0f, Random.Range(-6f, 6f));
+                if (TooCloseToWater(pos, 10f))
+                    continue;
+                pos.y = SampleTerrainHeight(pos) - 0.3f;
+
+                string modelName = RockFormationModels[Random.Range(0, RockFormationModels.Length)];
+                GameObject rock = InstantiateNature(modelName, pos);
+                if (rock == null)
+                    continue;
+
+                rock.name = "RockFormation_" + c + "_" + r;
+                rock.transform.SetParent(root.transform);
+                rock.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+                rock.transform.localScale = Vector3.one * Random.Range(1.8f, 3.2f);
+                rock.isStatic = true;
+                rock.AddComponent<DistanceCuller>().maxDistance = 230f;
+            }
         }
     }
 
@@ -895,8 +1057,6 @@ public static class SceneBuilder
         }
     }
 
-    static readonly string[] JunkyardProps = { "crate", "crate-strong", "barrel", "tree-pine", "tree", "rocks" };
-
     static readonly string[] VegetationModels = { "tree", "tree-pine", "mushrooms", "plant", "flowers", "flag" };
     static bool IsVegetation(string modelName) => System.Array.IndexOf(VegetationModels, modelName) >= 0;
 
@@ -908,69 +1068,103 @@ public static class SceneBuilder
             obj.isStatic = true;
     }
 
-    static void CreateJunkyardDecor()
+    static readonly string[] SpawnDecorModels = { "log", "log_large", "stump_round", "stump_old", "rock_smallA", "rock_smallE" };
+
+    // Close-in dressing around the spawn point. Was industrial crates/barrels left over from
+    // an earlier theme - replaced with Nature Kit logs/stumps/rocks that actually fit Wiesenland.
+    static void CreateSpawnDecor()
     {
-        GameObject decor = new GameObject("JunkyardDecor");
+        GameObject decor = new GameObject("SpawnDecor");
         for (int i = 0; i < 14; i++)
         {
             float angle = i * 0.7f;
             float radius = 6f + (i % 3) * 1.8f;
             Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+            pos.y = SampleTerrainHeight(pos);
 
-            string propName = JunkyardProps[i % JunkyardProps.Length];
-            GameObject prop = InstantiateKenney(propName, pos);
-            prop.name = "JunkProp_" + i;
+            string propName = SpawnDecorModels[i % SpawnDecorModels.Length];
+            GameObject prop = InstantiateNature(propName, pos);
+            if (prop == null)
+                continue;
+
+            prop.name = "SpawnDecor_" + i;
             prop.transform.SetParent(decor.transform);
             prop.transform.rotation = Quaternion.Euler(0f, i * 23f, 0f);
-            ApplyDecorFlags(prop, propName);
+            prop.isStatic = true;
         }
     }
 
-    static readonly string[] SkyscraperNames =
-    {
-        "building-skyscraper-a", "building-skyscraper-b", "building-skyscraper-c",
-        "building-skyscraper-d", "building-skyscraper-e",
-    };
+    static readonly string[] LandmarkModels = { "statue_obelisk", "statue_column", "statue_columnDamaged", "statue_ring", "statue_block" };
 
-    static readonly string[] BuildingNames =
+    // A distant ruin/monolith cluster on the horizon in one direction - a fitting "entfernte
+    // Landmarke" for a nature world, replacing a grey sci-fi skyline that never matched the theme.
+    static void CreateDistantLandmark()
     {
-        "building-a", "building-b", "building-c", "building-d", "building-e", "building-f", "building-g",
-        "building-h", "building-i", "building-j", "building-k", "building-l", "building-m", "building-n",
-    };
+        Random.InitState(8181);
+        GameObject root = new GameObject("DistantLandmark");
+        Vector3 center = new Vector3(Mathf.Sin(0.6f) * 300f, -10f, Mathf.Cos(0.6f) * 300f);
 
-    static readonly string[] LowDetailNames =
-    {
-        "low-detail-building-a", "low-detail-building-b", "low-detail-building-c", "low-detail-building-d",
-        "low-detail-building-e", "low-detail-building-f", "low-detail-building-g", "low-detail-building-h",
-        "low-detail-building-i", "low-detail-building-j", "low-detail-building-k",
-    };
+        for (int i = 0; i < 9; i++)
+        {
+            Vector3 pos = center + new Vector3(Random.Range(-18f, 18f), 0f, Random.Range(-18f, 18f));
 
-    static void CreateCityBackground()
-    {
-        GameObject cityRoot = new GameObject("CitySkyline");
+            string modelName = LandmarkModels[Random.Range(0, LandmarkModels.Length)];
+            GameObject obj = InstantiateNature(modelName, pos);
+            if (obj == null)
+                continue;
 
-        CreateBuildingRing(cityRoot.transform, SkyscraperNames, 16, 24f, 34f, 1.2f, 2.0f, 220f);
-        CreateBuildingRing(cityRoot.transform, BuildingNames, 24, 36f, 48f, 0.8f, 1.3f, 160f);
-        CreateBuildingRing(cityRoot.transform, LowDetailNames, 28, 50f, 70f, 0.9f, 1.6f, 100f);
+            obj.name = "Landmark_" + i;
+            obj.transform.SetParent(root.transform);
+            obj.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            obj.transform.localScale = Vector3.one * Random.Range(3f, 6f);
+            obj.isStatic = true;
+            obj.AddComponent<DistanceCuller>().maxDistance = 420f;
+        }
     }
 
-    static void CreateBuildingRing(Transform parent, string[] names, int count, float radiusMin, float radiusMax, float scaleMin, float scaleMax, float cullDistance)
+    // Floating islands with a waterfall each, visible from ground level looking outward -
+    // distinct from the tower-climb ambience islands, which sit much closer to the spiral.
+    static void CreateBackgroundIslands()
     {
+        Random.InitState(7070);
+        GameObject root = new GameObject("BackgroundIslands");
+        int count = 6;
+
         for (int i = 0; i < count; i++)
         {
-            float angle = (i / (float)count) * 360f * Mathf.Deg2Rad + i * 0.37f;
-            float radius = Mathf.Lerp(radiusMin, radiusMax, (i % 3) / 2f);
-            Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+            float angle = Random.Range(0f, Mathf.PI * 2f);
+            float radius = Random.Range(160f, 240f);
+            float height = Random.Range(25f, 65f);
+            Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, height, Mathf.Cos(angle) * radius);
 
-            string modelName = names[i % names.Length];
-            GameObject building = InstantiateCityProp(modelName, pos);
-            building.transform.SetParent(parent);
-            building.transform.rotation = Quaternion.Euler(0f, (i * 47f) % 360f, 0f);
-            building.isStatic = true;
-            building.AddComponent<DistanceCuller>().maxDistance = cullDistance;
+            GameObject island = new GameObject("BackgroundIsland_" + i);
+            island.transform.SetParent(root.transform);
+            island.transform.position = pos;
+            island.AddComponent<DistanceCuller>().maxDistance = 280f;
 
-            float scale = Mathf.Lerp(scaleMin, scaleMax, Mathf.Abs(Mathf.Sin(i * 12.9898f)));
-            building.transform.localScale = Vector3.one * scale;
+            float w = Random.Range(10f, 18f);
+            MakeAmbienceBlock(island.transform, pos, new Vector3(w, 3f, w), MakeUnlitColor(new Color(0.42f, 0.36f, 0.28f)));
+            MakeAmbienceBlock(island.transform, pos + Vector3.up * 1.6f, new Vector3(w * 0.9f, 1.2f, w * 0.9f), MakeUnlitColor(new Color(0.32f, 0.52f, 0.24f)));
+
+            int treeCount = Random.Range(1, 3);
+            for (int t = 0; t < treeCount; t++)
+            {
+                Vector3 treePos = pos + new Vector3(Random.Range(-w * 0.3f, w * 0.3f), 2.4f, Random.Range(-w * 0.3f, w * 0.3f));
+                GameObject tree = InstantiateNature("tree_pineTallA", treePos);
+                if (tree == null)
+                    continue;
+                tree.transform.SetParent(island.transform);
+                tree.transform.localScale = Vector3.one * Random.Range(1.3f, 2f);
+            }
+
+            GameObject fall = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            fall.name = "IslandWaterfall";
+            Object.DestroyImmediate(fall.GetComponent<Collider>());
+            fall.transform.SetParent(island.transform);
+            fall.transform.position = pos + new Vector3(w * 0.5f, -1.2f - 8f, 0f);
+            fall.transform.rotation = Quaternion.Euler(90f, Random.Range(0f, 360f), 0f);
+            fall.transform.localScale = new Vector3(3f, 16f, 1f);
+            fall.GetComponent<Renderer>().sharedMaterial = GetWaterMaterial();
         }
     }
 
