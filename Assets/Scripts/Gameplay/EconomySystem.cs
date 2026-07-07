@@ -20,6 +20,10 @@ public static class EconomySystem
 {
     static string EconomyPath => Path.Combine(Application.persistentDataPath, "economy.json");
     static EconomyData cached;
+    // Coins now respawn and can be farmed, so writing the file on every single pickup caused
+    // synchronous disk I/O in the gameplay hot path. Instead we mark the wallet dirty and let a
+    // driver (GameManager) flush it periodically / on quit. Purchases + equips still save at once.
+    static bool dirty;
 
     public static int Coins => Data.coins;
     public static int TotalCoinsEarned => Data.totalCoinsEarned;
@@ -42,7 +46,15 @@ public static class EconomySystem
             return;
         Data.coins += amount;
         Data.totalCoinsEarned += amount;
-        Save();
+        dirty = true;
+    }
+
+    // Persist the wallet to disk if it changed since the last write. Cheap no-op when clean, so
+    // it's safe to call every few seconds and on application quit.
+    public static void Flush()
+    {
+        if (dirty)
+            Save();
     }
 
     public static bool IsOwned(string id, bool isSkin)
@@ -95,5 +107,6 @@ public static class EconomySystem
     static void Save()
     {
         File.WriteAllText(EconomyPath, JsonUtility.ToJson(cached, true));
+        dirty = false;
     }
 }

@@ -66,13 +66,22 @@ public class WinScreen : MonoBehaviour
         int coins = GameManager.Instance != null ? GameManager.Instance.CoinCount : 0;
         GUI.Label(new Rect(x + 20, y + 125, w - 40, 25), $"Shards: {coins}", UITheme.LabelStyle);
 
-        if (GUI.Button(new Rect(x + 30, y + 195, w - 60, 40), "Neu starten", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 30, y + 190, w - 60, 40), "Neu starten", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             // In-place reset instead of SceneManager.LoadScene: reloading the scene while the
             // Netcode host is running (and DontDestroyOnLoad) left a duplicate NetworkManager
             // and no player, freezing the game. RestartRun resets the run without a reload.
             GameManager.Instance?.RestartRun();
+        }
+
+        if (GUI.Button(new Rect(x + 30, y + 240, w - 60, 40), "↩ Hauptmenü", UITheme.ButtonStyle))
+        {
+            AudioManager.Instance?.PlayClick();
+            // Clear the win state so the overlay closes, then open the menu (which frees the cursor).
+            // The run stays finished at the top; "Fortsetzen" simply hides the menu again.
+            ClearWon();
+            MainMenu.SetScreen(MenuScreen.Main);
         }
     }
 }

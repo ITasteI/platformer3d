@@ -24,6 +24,10 @@ public class GameManager : MonoBehaviour
     private struct CoinPopup { public int amount; public float spawn; }
     private readonly List<CoinPopup> popups = new List<CoinPopup>();
 
+    // Drives the batched wallet save so farmed coins don't hit the disk on every pickup.
+    private const float EconomyFlushInterval = 5f;
+    private float economyFlushTimer = EconomyFlushInterval;
+
     void Awake()
     {
         if (Instance != null && Instance != this)
@@ -50,6 +54,21 @@ public class GameManager : MonoBehaviour
         lastWalletCoins = wallet;
         coinPop = Mathf.Lerp(coinPop, 1f, Time.deltaTime * 7f);
         popups.RemoveAll(p => Time.time - p.spawn > 1.1f);
+
+        economyFlushTimer -= Time.deltaTime;
+        if (economyFlushTimer <= 0f)
+        {
+            economyFlushTimer = EconomyFlushInterval;
+            EconomySystem.Flush();
+        }
+    }
+
+    void OnApplicationQuit() => EconomySystem.Flush();
+
+    void OnApplicationPause(bool paused)
+    {
+        if (paused)
+            EconomySystem.Flush();
     }
 
     static bool IsPaused()

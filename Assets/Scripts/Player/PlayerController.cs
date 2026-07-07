@@ -181,7 +181,11 @@ public class PlayerController : NetworkBehaviour
         if (posY > highestY)
             highestY = posY;
 
-        if (posY < highestY - noReturnBuffer || posY < fallDeathY)
+        // The "Only-Up" no-return death punishes falling back down - but a moving/swinging platform
+        // can carry you below the threshold through its own motion, which isn't the player's fault.
+        // Suppress that death while riding one; the absolute void death (fallDeathY) still applies.
+        bool carried = currentPlatform != null;
+        if ((!carried && posY < highestY - noReturnBuffer) || posY < fallDeathY)
         {
             Die();
             if (!adminInvincible)

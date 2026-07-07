@@ -62,11 +62,16 @@ public class Coin : MonoBehaviour
 
     void Update()
     {
+        // Skip all animation while collected/hidden - the coin is invisible and non-interactive
+        // during its respawn wait, so there's nothing to spin or bob.
+        if (collected)
+            return;
+
         transform.Rotate(Vector3.up, spinSpeed * Time.deltaTime, Space.World);
         float y = startPos.y + Mathf.Sin(Time.time * bobSpeed) * bobHeight;
         transform.position = new Vector3(startPos.x, y, startPos.z);
 
-        if (type == CoinType.Legendary && !collected)
+        if (type == CoinType.Legendary)
         {
             float pulse = 1f + Mathf.Sin(Time.time * 4f) * 0.12f;
             transform.localScale = Vector3.one * pulse * legendaryBaseScale;
@@ -83,7 +88,7 @@ public class Coin : MonoBehaviour
             return;
 
         int value = ValueFor(type);
-        GameManager.Instance.AddCoins(value);
+        GameManager.Instance?.AddCoins(value);
         EconomySystem.AddCoins(value);
         AudioManager.Instance?.PlayCoin();
         EffectsManager.Instance?.PlaySparkle(transform.position);
