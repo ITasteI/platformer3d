@@ -47,10 +47,26 @@ public class CrumblingPlatform : MonoBehaviour
 
         yield return new WaitForSeconds(respawnDelay);
 
+        // Show the platform again, but don't re-enable the solid collider while a player is
+        // still standing in its volume - otherwise it would pop them upward / clip them.
         transform.position = startPos;
-        solidCollider.enabled = true;
         foreach (var r in renderers)
             r.enabled = true;
+
+        Bounds bounds = solidCollider.bounds;
+        while (PlayerOverlaps(bounds))
+            yield return null;
+
+        solidCollider.enabled = true;
         triggered = false;
+    }
+
+    static bool PlayerOverlaps(Bounds bounds)
+    {
+        Collider[] hits = Physics.OverlapBox(bounds.center, bounds.extents + Vector3.up * 0.3f, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore);
+        foreach (var h in hits)
+            if (h.CompareTag("Player"))
+                return true;
+        return false;
     }
 }

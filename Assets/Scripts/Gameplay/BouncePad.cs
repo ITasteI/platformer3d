@@ -8,6 +8,10 @@ public class BouncePad : MonoBehaviour
     {
         var player = other.GetComponent<PlayerController>();
         if (player != null && player.IsOwner)
+        {
             player.ApplyBounce(bounceForce);
+            AudioManager.Instance?.PlayBounce();
+            EffectsManager.Instance?.PlayDust(transform.position);
+        }
     }
 }

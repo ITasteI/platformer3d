@@ -24,7 +24,7 @@ public class WinScreen : MonoBehaviour
             return;
 
         HasWon = true;
-        finishTime = GameManager.Instance != null ? Time.time - GameManager.Instance.StartTime : 0f;
+        finishTime = GameManager.Instance != null ? GameManager.Instance.PlayTime : 0f;
 
         SaveData previous = SaveSystem.Load();
         bestTime = previous != null && previous.bestTime >= 0f ? previous.bestTime : -1f;
@@ -33,6 +33,7 @@ public class WinScreen : MonoBehaviour
         if (isNewBest)
             bestTime = finishTime;
 
+        AudioManager.Instance?.PlayVictory();
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }
@@ -67,6 +68,9 @@ public class WinScreen : MonoBehaviour
         if (GUI.Button(new Rect(x + 30, y + 195, w - 60, 40), "Neu starten", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
+            // Full restart from the bottom: clear the checkpoint save first, otherwise the
+            // reloaded run would immediately respawn at the top checkpoint near the goal.
+            SaveSystem.DeleteSave();
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
     }

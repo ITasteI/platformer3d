@@ -352,11 +352,22 @@ public static class SceneBuilder
         playerController.playerCamera = cam;
         playerController.audioListener = listener;
 
+        // Layer 8 = "Player": the camera's collision SphereCast masks this out so it never
+        // snaps onto the player's own body when looking level.
+        SetLayerRecursive(root, 8);
+
         const string prefabPath = "Assets/PlayerPrefab.prefab";
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
         Object.DestroyImmediate(root);
 
         return prefab;
+    }
+
+    static void SetLayerRecursive(GameObject go, int layer)
+    {
+        go.layer = layer;
+        foreach (Transform child in go.transform)
+            SetLayerRecursive(child.gameObject, layer);
     }
 
     static Camera CreateLobbyCamera()
@@ -1237,9 +1248,9 @@ public static class SceneBuilder
 
         audio.footstepClips = new[]
         {
-            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_concrete_000.ogg"),
-            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_concrete_001.ogg"),
-            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_concrete_002.ogg"),
+            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_grass_000.ogg"),
+            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_grass_001.ogg"),
+            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_grass_002.ogg"),
         };
         audio.jumpClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "jump.ogg");
         audio.landClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "land.ogg");
@@ -1247,6 +1258,9 @@ public static class SceneBuilder
         audio.deathClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "death.ogg");
         audio.checkpointClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "checkpoint.ogg");
         audio.clickClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "click.ogg");
+        audio.bounceClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "bounce.ogg");
+        audio.whooshClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "whoosh.ogg");
+        audio.victoryClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "victory.ogg");
     }
 
     static void SetGameIcon()

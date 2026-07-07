@@ -42,9 +42,9 @@ public class PlayerController : NetworkBehaviour
     [Header("Fly Ability (Q)")]
     public float flyDuration = 3f;
     public float flySpeed = 6f;
-    public float baseCooldown = 180f;
-    public float cooldownReductionPerShard = 30f;
-    public float minCooldown = 30f;
+    public float baseCooldown = 90f;
+    public float cooldownReductionPerShard = 15f;
+    public float minCooldown = 20f;
 
     [Header("Dash")]
     public float dashSpeed = 18f;
@@ -268,6 +268,7 @@ public class PlayerController : NetworkBehaviour
             dashTimer = dashDuration;
             dashCooldownTimer = dashCooldown;
             EffectsManager.Instance?.PlayDust(transform.position);
+            AudioManager.Instance?.PlayWhoosh();
         }
 
         if (dashTimer > 0f)
@@ -321,6 +322,8 @@ public class PlayerController : NetworkBehaviour
         {
             isFlying = true;
             flyTimer = flyDuration;
+            AudioManager.Instance?.PlayWhoosh();
+            EffectsManager.Instance?.PlayDust(transform.position);
             int shards = GameManager.Instance != null ? GameManager.Instance.CoinCount : 0;
             cooldownRemaining = Mathf.Max(minCooldown, baseCooldown - shards * cooldownReductionPerShard);
         }

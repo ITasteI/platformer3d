@@ -12,6 +12,9 @@ public class CameraFollow : MonoBehaviour
     public float collisionRadius = 0.3f;
     public float collisionPadding = 0.2f;
     public float minDistance = 1f;
+    // Layers the camera collides with. Defaults to everything except the player layer (8),
+    // so looking level doesn't snap the camera onto the player's own collider.
+    public LayerMask collisionMask = ~(1 << 8);
 
     private float yaw;
     private float pitch = 20f;
@@ -48,7 +51,7 @@ public class CameraFollow : MonoBehaviour
         Vector3 camDir = -(rotation * Vector3.forward);
 
         float targetDistance = distance;
-        if (Physics.SphereCast(pivot, collisionRadius, camDir, out RaycastHit hit, distance, ~0, QueryTriggerInteraction.Ignore))
+        if (Physics.SphereCast(pivot, collisionRadius, camDir, out RaycastHit hit, distance, collisionMask, QueryTriggerInteraction.Ignore))
             targetDistance = Mathf.Clamp(hit.distance - collisionPadding, minDistance, distance);
 
         currentDistance = Mathf.SmoothDamp(currentDistance, targetDistance, ref distanceVelocity, positionSmoothTime);

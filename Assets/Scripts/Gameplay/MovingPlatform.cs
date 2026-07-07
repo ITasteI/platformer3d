@@ -21,7 +21,7 @@ public class MovingPlatform : MonoBehaviour, IMovingSurface
 
     void Update()
     {
-        Vector3 newPos = startPos + moveOffset * Mathf.Sin(Time.time * speed);
+        Vector3 newPos = startPos + moveOffset * Mathf.Sin(PlatformClock.Time * speed);
         FrameDelta = newPos - transform.position;
         transform.position = newPos;
     }

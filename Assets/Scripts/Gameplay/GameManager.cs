@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using UnityEngine;
 
 public class GameManager : MonoBehaviour
@@ -8,7 +9,10 @@ public class GameManager : MonoBehaviour
     public Transform player;
     public float topHeight = 500f;
     public int totalStages = 8;
-    public float StartTime { get; private set; }
+
+    // Accumulated active play time. Unlike (Time.time - StartTime) this pauses whenever the
+    // menu, tutorial or win screen is up, so the run timer / best time stays fair.
+    public float PlayTime { get; private set; }
 
     static readonly string[] WorldNames = { "Wiesenland", "Vulkanfeld", "Wolkenreich", "Eiskristall", "Sternenkrone" };
 
@@ -20,7 +24,18 @@ public class GameManager : MonoBehaviour
             return;
         }
         Instance = this;
-        StartTime = Time.time;
+        PlayTime = 0f;
+    }
+
+    void Update()
+    {
+        if (!IsPaused())
+            PlayTime += Time.deltaTime;
+    }
+
+    static bool IsPaused()
+    {
+        return MainMenu.IsBlockingGameplay || WinScreen.HasWon || TutorialOverlay.IsVisible;
     }
 
     public void AddCoin()
@@ -39,6 +54,14 @@ public class GameManager : MonoBehaviour
         return WorldNames[index];
     }
 
+    static int ConnectedPlayers()
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm != null && nm.IsListening)
+            return nm.ConnectedClientsList.Count;
+        return 1;
+    }
+
     void OnGUI()
     {
         if (MainMenu.IsBlockingGameplay || WinScreen.HasWon)
@@ -48,10 +71,9 @@ public class GameManager : MonoBehaviour
 
         GUI.Label(new Rect(20, 20, 300, 30), $"Shards: {CoinCount}", UITheme.HudStyle);
 
-        float elapsed = Time.time - StartTime;
-        int elMin = Mathf.FloorToInt(elapsed / 60f);
-        int elSec = Mathf.FloorToInt(elapsed % 60f);
-        GUI.Label(new Rect(20, 48, 300, 30), $"Zeit: {elMin:00}:{elSec:00}", UITheme.HudStyle);
+        int min = Mathf.FloorToInt(PlayTime / 60f);
+        int sec = Mathf.FloorToInt(PlayTime % 60f);
+        GUI.Label(new Rect(20, 48, 300, 30), $"Zeit: {min:00}:{sec:00}", UITheme.HudStyle);
 
         if (player != null)
         {
@@ -61,6 +83,13 @@ public class GameManager : MonoBehaviour
             float t = Mathf.Clamp01(height / topHeight);
             int stage = Mathf.Clamp(Mathf.FloorToInt(t * totalStages) + 1, 1, totalStages);
             GUI.Label(new Rect(20, 104, 300, 30), $"{GetWorldName(t)} — Abschnitt {stage}/{totalStages}", UITheme.HudStyle);
+        }
+
+        int players = ConnectedPlayers();
+        if (players > 1)
+        {
+            var style = new GUIStyle(UITheme.HudStyle) { alignment = TextAnchor.UpperRight };
+            GUI.Label(new Rect(Screen.width - 220, 48, 200, 30), $"Spieler: {players}", style);
         }
     }
 }

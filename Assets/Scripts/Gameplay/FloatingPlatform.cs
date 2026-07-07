@@ -21,7 +21,7 @@ public class FloatingPlatform : MonoBehaviour, IMovingSurface
 
     void Update()
     {
-        Vector3 newPos = basePos + Vector3.up * (Mathf.Sin(Time.time * speed) * amplitude);
+        Vector3 newPos = basePos + Vector3.up * (Mathf.Sin(PlatformClock.Time * speed) * amplitude);
         FrameDelta = newPos - transform.position;
         transform.position = newPos;
     }

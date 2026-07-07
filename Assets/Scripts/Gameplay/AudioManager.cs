@@ -11,6 +11,9 @@ public class AudioManager : MonoBehaviour
     public AudioClip deathClip;
     public AudioClip checkpointClip;
     public AudioClip clickClip;
+    public AudioClip bounceClip;
+    public AudioClip whooshClip;
+    public AudioClip victoryClip;
 
     private AudioSource source;
 
@@ -33,6 +36,9 @@ public class AudioManager : MonoBehaviour
     public void PlayDeath() => Play(deathClip, 0.9f);
     public void PlayCheckpoint() => Play(checkpointClip, 0.9f);
     public void PlayClick() => Play(clickClip, 0.6f);
+    public void PlayBounce() => Play(bounceClip, 0.8f);
+    public void PlayWhoosh() => Play(whooshClip, 0.6f);
+    public void PlayVictory() => Play(victoryClip, 0.9f);
 
     public void PlayFootstep()
     {

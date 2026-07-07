@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 7925364013411530117}
   - component: {fileID: 5435042123040601059}
   - component: {fileID: 4796085357700806961}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: NameTag
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -132,7 +132,7 @@ GameObject:
   - component: {fileID: 1594739028941666996}
   - component: {fileID: 2526601438304105108}
   - component: {fileID: 5459662715202282215}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: PlayerPrefab
   m_TagString: Player
   m_Icon: {fileID: 0}
@@ -319,9 +319,9 @@ MonoBehaviour:
   crouchSpeedMultiplier: 0.5
   flyDuration: 3
   flySpeed: 6
-  baseCooldown: 180
-  cooldownReductionPerShard: 30
-  minCooldown: 30
+  baseCooldown: 90
+  cooldownReductionPerShard: 15
+  minCooldown: 20
   dashSpeed: 18
   dashDuration: 0.15
   dashCooldown: 1.5
@@ -354,7 +354,7 @@ GameObject:
   - component: {fileID: 8159924509554898986}
   - component: {fileID: 3807034075044641205}
   - component: {fileID: 321162725376230336}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: PlayerCamera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
@@ -457,6 +457,9 @@ MonoBehaviour:
   collisionRadius: 0.3
   collisionPadding: 0.2
   minDistance: 1
+  collisionMask:
+    serializedVersion: 2
+    m_Bits: 4294967039
 --- !u!1001 &1082239859893713263
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -505,14 +508,46 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -7134394785105016132, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: -5151492872390713093, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: -5069531478518834764, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
       propertyPath: m_Name
       value: CharacterVisual
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 3250163066507786643, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 4361710834771507933, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 5788240856288092216, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
+      propertyPath: m_Layer
+      value: 8
       objectReference: {fileID: 0}
     - target: {fileID: 6435320000920075851, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 37f5343ab034fcd4d89aa957ec1d9eba, type: 2}
+    - target: {fileID: 8303906797054990637, guid: e5613e46bfde1c34aa444419be015cc7, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

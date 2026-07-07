@@ -24,7 +24,7 @@ public class SwingingPlatform : MonoBehaviour, IMovingSurface
 
     void Update()
     {
-        float angle = baseAngle + Mathf.Sin(Time.time * speed) * swingAngleDeg;
+        float angle = baseAngle + Mathf.Sin(PlatformClock.Time * speed) * swingAngleDeg;
         float rad = angle * Mathf.Deg2Rad;
         Vector3 offset = new Vector3(Mathf.Sin(rad) * armLength, -Mathf.Cos(rad) * armLength, 0f);
         Vector3 newPos = pivot + offset;

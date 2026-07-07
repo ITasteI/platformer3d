@@ -21,7 +21,7 @@ public class TimedPlatform : MonoBehaviour
     void Update()
     {
         float cycle = solidDuration + goneDuration;
-        float phase = (Time.time + phaseOffset) % cycle;
+        float phase = (PlatformClock.Time + phaseOffset) % cycle;
         bool solid = phase < solidDuration;
         bool warning = solid && (solidDuration - phase) < warningTime;
 

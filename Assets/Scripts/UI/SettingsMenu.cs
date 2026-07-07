@@ -4,6 +4,11 @@ using UnityEngine;
 public class SettingsMenu : MonoBehaviour
 {
     const string VolumePrefKey = "MasterVolume";
+    const string QualityPrefKey = "QualityLevel";
+    const string ResWidthPrefKey = "ResWidth";
+    const string ResHeightPrefKey = "ResHeight";
+    const string FullscreenPrefKey = "Fullscreen";
+
     private float volume = 1f;
     private string nameInput = "";
     private string nameStatus = "";
@@ -13,6 +18,29 @@ public class SettingsMenu : MonoBehaviour
         volume = PlayerPrefs.GetFloat(VolumePrefKey, 1f);
         AudioListener.volume = volume;
         nameInput = PlayerProfile.Name;
+        ApplySavedDisplaySettings();
+    }
+
+    static void ApplySavedDisplaySettings()
+    {
+        if (PlayerPrefs.HasKey(QualityPrefKey))
+            QualitySettings.SetQualityLevel(Mathf.Clamp(PlayerPrefs.GetInt(QualityPrefKey), 0, QualitySettings.names.Length - 1), true);
+
+        FullScreenMode mode = PlayerPrefs.GetInt(FullscreenPrefKey, 1) == 1
+            ? FullScreenMode.FullScreenWindow
+            : FullScreenMode.Windowed;
+
+        if (PlayerPrefs.HasKey(ResWidthPrefKey) && PlayerPrefs.HasKey(ResHeightPrefKey))
+            Screen.SetResolution(PlayerPrefs.GetInt(ResWidthPrefKey), PlayerPrefs.GetInt(ResHeightPrefKey), mode);
+        else
+            Screen.fullScreenMode = mode;
+    }
+
+    static void SaveResolution(int width, int height)
+    {
+        PlayerPrefs.SetInt(ResWidthPrefKey, width);
+        PlayerPrefs.SetInt(ResHeightPrefKey, height);
+        Screen.SetResolution(width, height, Screen.fullScreenMode);
     }
 
     void OnGUI()
@@ -81,17 +109,20 @@ public class SettingsMenu : MonoBehaviour
         GUI.Label(new Rect(x + 20, curY, w - 40, 20), "Auflösung:", UITheme.LabelStyle);
         curY += 22f;
         if (GUI.Button(new Rect(x + 20, curY, 110, 28), "1280x720", UITheme.ButtonStyle))
-            Screen.SetResolution(1280, 720, Screen.fullScreenMode);
+            SaveResolution(1280, 720);
         if (GUI.Button(new Rect(x + 140, curY, 110, 28), "1920x1080", UITheme.ButtonStyle))
-            Screen.SetResolution(1920, 1080, Screen.fullScreenMode);
+            SaveResolution(1920, 1080);
         if (GUI.Button(new Rect(x + 260, curY, 100, 28), "2560x1440", UITheme.ButtonStyle))
-            Screen.SetResolution(2560, 1440, Screen.fullScreenMode);
+            SaveResolution(2560, 1440);
         curY += 40f;
 
         bool fullscreen = Screen.fullScreenMode != FullScreenMode.Windowed;
         bool newFullscreen = GUI.Toggle(new Rect(x + 20, curY, w - 40, 24), fullscreen, " Vollbild");
         if (newFullscreen != fullscreen)
+        {
             Screen.fullScreenMode = newFullscreen ? FullScreenMode.FullScreenWindow : FullScreenMode.Windowed;
+            PlayerPrefs.SetInt(FullscreenPrefKey, newFullscreen ? 1 : 0);
+        }
         curY += 34f;
 
         GUI.Label(new Rect(x + 20, curY, w - 40, 20), "Grafikqualität:", UITheme.LabelStyle);
@@ -100,7 +131,10 @@ public class SettingsMenu : MonoBehaviour
         for (int i = 0; i < qualityNames.Length; i++)
         {
             if (GUI.Button(new Rect(x + 20 + i * 90, curY, 80, 28), qualityNames[i], UITheme.ButtonStyle))
+            {
                 QualitySettings.SetQualityLevel(i, true);
+                PlayerPrefs.SetInt(QualityPrefKey, i);
+            }
         }
         curY += 45f;
 
