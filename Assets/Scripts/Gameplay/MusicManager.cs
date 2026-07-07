@@ -1,55 +1,78 @@
-using System;
-using System.Collections;
-using System.IO;
 using UnityEngine;
-using UnityEngine.Networking;
 
-// Plays a single background track on loop. The track is a very large (~2.5h, 157MB) mp3 that
-// Unity can't import as an AudioClip, so it lives verbatim in StreamingAssets and is streamed
-// from disk at runtime instead.
+// Loops a single background track with a smooth crossfade at the loop point: as the track nears
+// its end, a second AudioSource starts the clip from the beginning and the two are crossfaded, so
+// the end flows seamlessly back into the start (no hard seam).
 public class MusicManager : MonoBehaviour
 {
-    public string streamingFileName = "music_loop.mp3";
+    public AudioClip loopClip;
     public float volume = 0.4f;
+    public float crossfade = 5f;
 
-    private AudioSource source;
+    private AudioSource a;
+    private AudioSource b;
+    private AudioSource active;
+    private bool crossfading;
 
     void Awake()
     {
-        source = gameObject.AddComponent<AudioSource>();
-        source.loop = true;
-        source.spatialBlend = 0f;
-        source.playOnAwake = false;
-        source.volume = volume;
+        a = gameObject.AddComponent<AudioSource>();
+        b = gameObject.AddComponent<AudioSource>();
+        foreach (var s in new[] { a, b })
+        {
+            s.loop = false;
+            s.spatialBlend = 0f;
+            s.playOnAwake = false;
+            s.volume = 0f;
+        }
+        active = a;
     }
 
-    IEnumerator Start()
+    void Start()
     {
-        string path = Path.Combine(Application.streamingAssetsPath, streamingFileName);
-        if (!File.Exists(path))
+        if (loopClip == null)
+            return;
+        active.clip = loopClip;
+        active.volume = volume;
+        active.time = 0f;
+        active.Play();
+    }
+
+    void Update()
+    {
+        if (loopClip == null || active == null)
+            return;
+
+        float fade = Mathf.Min(crossfade, loopClip.length * 0.4f);
+
+        if (!crossfading)
         {
-            Debug.LogWarning("MusicManager: music file not found at " + path);
-            yield break;
+            float remaining = loopClip.length - active.time;
+            if (active.isPlaying && remaining <= fade)
+            {
+                AudioSource next = active == a ? b : a;
+                next.clip = loopClip;
+                next.time = 0f;
+                next.volume = 0f;
+                next.Play();
+                crossfading = true;
+            }
         }
-
-        string uri = new Uri(path).AbsoluteUri;   // file:///C:/... form
-        using UnityWebRequest req = UnityWebRequestMultimedia.GetAudioClip(uri, AudioType.MPEG);
-        if (req.downloadHandler is DownloadHandlerAudioClip handler)
-            handler.streamAudio = true;           // stream, don't load the whole file into memory
-
-        yield return req.SendWebRequest();
-
-        if (req.result != UnityWebRequest.Result.Success)
+        else
         {
-            Debug.LogWarning("MusicManager: failed to load music - " + req.error);
-            yield break;
+            AudioSource next = active == a ? b : a;
+            float p = Mathf.Clamp01(next.time / fade);
+            active.volume = volume * (1f - p);
+            next.volume = volume * p;
+
+            if (p >= 1f)
+            {
+                active.Stop();
+                active.volume = 0f;
+                active = next;
+                active.volume = volume;
+                crossfading = false;
+            }
         }
-
-        AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
-        if (clip == null)
-            yield break;
-
-        source.clip = clip;
-        source.Play();
     }
 }

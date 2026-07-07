@@ -1950,10 +1950,31 @@ public static class SceneBuilder
 
     static void CreateMusicManager()
     {
-        // The loop track streams from StreamingAssets/music_loop.mp3 at runtime (see MusicManager)
-        // because the file is too large for Unity to import as an AudioClip.
+        // ~30 min loop track. Import as Vorbis "Compressed In Memory" so it's small in RAM and can
+        // be played by two AudioSources at once (MusicManager crossfades them for a seamless loop).
+        string loopPath = AudioPath + "Music/music_loop.mp3";
+        var audioImporter = AssetImporter.GetAtPath(loopPath) as AudioImporter;
+        if (audioImporter != null)
+        {
+            var settings = audioImporter.defaultSampleSettings;
+            if (settings.loadType != AudioClipLoadType.CompressedInMemory || settings.compressionFormat != AudioCompressionFormat.Vorbis)
+            {
+                settings.loadType = AudioClipLoadType.CompressedInMemory;
+                settings.compressionFormat = AudioCompressionFormat.Vorbis;
+                settings.quality = 0.5f;
+                settings.preloadAudioData = true;
+                audioImporter.defaultSampleSettings = settings;
+                audioImporter.SaveAndReimport();
+            }
+        }
+
         var go = new GameObject("MusicManager");
-        go.AddComponent<MusicManager>();
+        var music = go.AddComponent<MusicManager>();
+        var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(loopPath);
+        music.loopClip = clip;
+        Debug.Log(clip != null
+            ? $"MusicManager: loop clip loaded ({clip.length:0}s)"
+            : "MusicManager: loop clip is NULL at " + loopPath);
     }
 
     static readonly string[] GrassZonePlatforms = { "crate-strong", "crate-item-strong", "platform" };
