@@ -25,11 +25,11 @@ public class PlayerController : NetworkBehaviour
     public float crouchSpeedMultiplier = 0.5f;
 
     [Header("Fly Ability (Q)")]
-    public float flyDuration = 5f;
-    public float flySpeed = 10f;
+    public float flyDuration = 3f;
+    public float flySpeed = 6f;
     public float baseCooldown = 180f;
     public float cooldownReductionPerShard = 30f;
-    public float minCooldown = 20f;
+    public float minCooldown = 30f;
 
     [Header("References")]
     public Transform cameraTransform;
@@ -55,14 +55,25 @@ public class PlayerController : NetworkBehaviour
     private float cooldownRemaining;
     private float currentSpeed;
     private Vector3 spawnPoint;
+    private Vector3 checkpoint;
+    private bool wasGrounded;
+    private float footstepTimer;
+    private const float FootstepInterval = 0.35f;
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
         spawnPoint = transform.position;
+        checkpoint = spawnPoint;
         highestY = transform.position.y;
         controller.height = standHeight;
         controller.center = new Vector3(0f, standHeight / 2f, 0f);
+    }
+
+    public void SetCheckpoint(Vector3 pos)
+    {
+        if (pos.y > checkpoint.y)
+            checkpoint = pos;
     }
 
     public override void OnNetworkSpawn()
@@ -114,13 +125,12 @@ public class PlayerController : NetworkBehaviour
 
     public void Die()
     {
+        AudioManager.Instance?.PlayDeath();
         controller.enabled = false;
-        transform.position = spawnPoint;
+        transform.position = checkpoint;
         controller.enabled = true;
         velocity = Vector3.zero;
-        highestY = spawnPoint.y;
-        if (GameManager.Instance != null)
-            GameManager.Instance.ResetCoins();
+        highestY = checkpoint.y;
     }
 
     void HandleAnimation()
@@ -167,12 +177,12 @@ public class PlayerController : NetworkBehaviour
 
     void OnGUI()
     {
-        if (!IsOwner)
+        if (!IsOwner || MainMenu.IsBlockingGameplay)
             return;
 
-        var style = new GUIStyle { fontSize = 20, normal = new GUIStyleState { textColor = Color.white } };
+        UITheme.EnsureInit();
         string status = AbilityReady ? "Flug (Q): bereit" : $"Flug (Q): {CooldownRemaining:0}s";
-        GUI.Label(new Rect(20, 90, 300, 30), status, style);
+        GUI.Label(new Rect(20, 108, 300, 30), status, UITheme.HudStyle);
     }
 
     void HandleGroundState()
@@ -183,12 +193,26 @@ public class PlayerController : NetworkBehaviour
             jumpsUsed = 0;
             if (velocity.y < 0f)
                 velocity.y = -2f;
+
+            if (!wasGrounded)
+                AudioManager.Instance?.PlayLand();
+
+            if (currentSpeed > 0.1f)
+            {
+                footstepTimer -= Time.deltaTime;
+                if (footstepTimer <= 0f)
+                {
+                    AudioManager.Instance?.PlayFootstep();
+                    footstepTimer = FootstepInterval;
+                }
+            }
         }
         else
         {
             coyoteTimer -= Time.deltaTime;
         }
 
+        wasGrounded = controller.isGrounded;
         jumpBufferTimer -= Time.deltaTime;
     }
 
@@ -207,6 +231,7 @@ public class PlayerController : NetworkBehaviour
             jumpsUsed++;
             jumpBufferTimer = 0f;
             coyoteTimer = 0f;
+            AudioManager.Instance?.PlayJump();
         }
     }
 

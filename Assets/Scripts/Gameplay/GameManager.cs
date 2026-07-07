@@ -6,6 +6,8 @@ public class GameManager : MonoBehaviour
 
     public int CoinCount { get; private set; }
     public Transform player;
+    public float topHeight = 500f;
+    public int totalStages = 8;
 
     void Awake()
     {
@@ -22,20 +24,22 @@ public class GameManager : MonoBehaviour
         CoinCount++;
     }
 
-    public void ResetCoins()
-    {
-        CoinCount = 0;
-    }
-
     void OnGUI()
     {
-        var style = new GUIStyle { fontSize = 24, normal = new GUIStyleState { textColor = Color.white } };
-        GUI.Label(new Rect(20, 20, 250, 30), $"Shards: {CoinCount}", style);
+        if (MainMenu.IsBlockingGameplay)
+            return;
+
+        UITheme.EnsureInit();
+
+        GUI.Label(new Rect(20, 20, 300, 30), $"Shards: {CoinCount}", UITheme.HudStyle);
 
         if (player != null)
         {
             float height = Mathf.Max(0f, player.position.y);
-            GUI.Label(new Rect(20, 50, 250, 30), $"Höhe: {height:0} m", style);
+            GUI.Label(new Rect(20, 48, 300, 30), $"Höhe: {height:0} m", UITheme.HudStyle);
+
+            int stage = Mathf.Clamp(Mathf.FloorToInt(height / topHeight * totalStages) + 1, 1, totalStages);
+            GUI.Label(new Rect(20, 76, 300, 30), $"Abschnitt {stage}/{totalStages}", UITheme.HudStyle);
         }
     }
 }

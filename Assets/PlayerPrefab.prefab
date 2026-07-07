@@ -159,11 +159,11 @@ MonoBehaviour:
   standHeight: 2
   crouchHeight: 1
   crouchSpeedMultiplier: 0.5
-  flyDuration: 5
-  flySpeed: 10
+  flyDuration: 3
+  flySpeed: 6
   baseCooldown: 180
   cooldownReductionPerShard: 30
-  minCooldown: 20
+  minCooldown: 30
   cameraTransform: {fileID: 0}
   animator: {fileID: 5569974840928966669}
   playerCamera: {fileID: 8159924509554898986}

@@ -49,29 +49,33 @@ public class MainMenu : MonoBehaviour
         if (Current != MenuScreen.Main)
             return;
 
+        UITheme.EnsureInit();
+
         float w = 340f;
         float h = 250f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
-        GUI.Box(new Rect(x, y, w, h), "");
-
-        var titleStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 30,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter,
-        };
-        GUI.Label(new Rect(x, y + 15, w, 45), "TasteJump", titleStyle);
+        GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
+        GUI.Label(new Rect(x, y + 15, w, 45), "TasteJump", UITheme.TitleStyle);
 
         string playLabel = HasActiveGame ? "Weiter spielen" : "Spiel Starten";
-        if (GUI.Button(new Rect(x + 30, y + 75, w - 60, 38), playLabel))
+        if (GUI.Button(new Rect(x + 30, y + 75, w - 60, 38), playLabel, UITheme.ButtonStyle))
+        {
+            AudioManager.Instance?.PlayClick();
             SetScreen(HasActiveGame ? MenuScreen.Hidden : MenuScreen.Play);
+        }
 
-        if (GUI.Button(new Rect(x + 30, y + 122, w - 60, 38), "Einstellungen"))
+        if (GUI.Button(new Rect(x + 30, y + 122, w - 60, 38), "Einstellungen", UITheme.ButtonStyle))
+        {
+            AudioManager.Instance?.PlayClick();
             SetScreen(MenuScreen.Settings);
+        }
 
-        if (GUI.Button(new Rect(x + 30, y + 169, w - 60, 38), "Spiel Beenden"))
+        if (GUI.Button(new Rect(x + 30, y + 169, w - 60, 38), "Spiel Beenden", UITheme.ButtonStyle))
+        {
+            AudioManager.Instance?.PlayClick();
             Application.Quit();
+        }
     }
 }

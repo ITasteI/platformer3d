@@ -4,6 +4,7 @@ using UnityEngine;
 public class Hazard : MonoBehaviour
 {
     public float rotationSpeed = 180f;
+    public bool spins = true;
 
     void Awake()
     {
@@ -12,7 +13,8 @@ public class Hazard : MonoBehaviour
 
     void Update()
     {
-        transform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime, Space.World);
+        if (spins)
+            transform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime, Space.World);
     }
 
     void OnTriggerEnter(Collider other)

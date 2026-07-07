@@ -36,36 +36,42 @@ public class LobbyBootstrap : MonoBehaviour
         if (MainMenu.Current != MenuScreen.Play)
             return;
 
+        UITheme.EnsureInit();
+
         float w = 340f;
-        float h = 300f;
+        float h = 340f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
-        GUI.Box(new Rect(x, y, w, h), "Multiplayer");
+        GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
+        GUI.Label(new Rect(x, y + 8, w, 28), "Multiplayer", UITheme.TitleStyle);
 
-        GUI.Label(new Rect(x + 20, y + 30, w - 40, 20), "LAN / direkte IP:");
-        ipAddress = GUI.TextField(new Rect(x + 20, y + 50, w - 40, 25), ipAddress);
+        GUI.Label(new Rect(x + 20, y + 45, w - 40, 20), "LAN / direkte IP:", UITheme.LabelStyle);
+        ipAddress = GUI.TextField(new Rect(x + 20, y + 65, w - 40, 25), ipAddress);
 
-        if (GUI.Button(new Rect(x + 20, y + 85, (w - 50) / 2, 30), "Hosten (LAN)"))
+        if (GUI.Button(new Rect(x + 20, y + 100, (w - 50) / 2, 30), "Hosten (LAN)", UITheme.ButtonStyle))
             StartLanHost();
-        if (GUI.Button(new Rect(x + 30 + (w - 50) / 2, y + 85, (w - 50) / 2, 30), "Beitreten"))
+        if (GUI.Button(new Rect(x + 30 + (w - 50) / 2, y + 100, (w - 50) / 2, 30), "Beitreten", UITheme.ButtonStyle))
             StartLanClient();
 
-        if (GUI.Button(new Rect(x + 20, y + 122, w - 40, 28), "Solo spielen"))
+        if (GUI.Button(new Rect(x + 20, y + 137, w - 40, 28), "Solo spielen", UITheme.ButtonStyle))
             StartSolo();
 
-        GUI.Label(new Rect(x + 20, y + 158, w - 40, 20), "Unity Relay Beitrittscode:");
-        relayJoinCodeInput = GUI.TextField(new Rect(x + 20, y + 178, w - 40, 25), relayJoinCodeInput);
+        GUI.Label(new Rect(x + 20, y + 173, w - 40, 20), "Unity Relay Beitrittscode:", UITheme.LabelStyle);
+        relayJoinCodeInput = GUI.TextField(new Rect(x + 20, y + 193, w - 40, 25), relayJoinCodeInput);
 
-        if (GUI.Button(new Rect(x + 20, y + 210, (w - 50) / 2, 28), "Relay hosten"))
+        if (GUI.Button(new Rect(x + 20, y + 225, (w - 50) / 2, 28), "Relay hosten", UITheme.ButtonStyle))
             _ = StartRelayHost();
-        if (GUI.Button(new Rect(x + 30 + (w - 50) / 2, y + 210, (w - 50) / 2, 28), "Relay beitreten"))
+        if (GUI.Button(new Rect(x + 30 + (w - 50) / 2, y + 225, (w - 50) / 2, 28), "Relay beitreten", UITheme.ButtonStyle))
             _ = StartRelayJoin();
 
-        GUI.Label(new Rect(x + 20, y + 242, w - 40, 30), statusMessage);
+        GUI.Label(new Rect(x + 20, y + 258, w - 40, 30), statusMessage, UITheme.LabelStyle);
 
-        if (GUI.Button(new Rect(x + 20, y + 266, w - 40, 26), "Zurück"))
+        if (GUI.Button(new Rect(x + 20, y + 295, w - 40, 30), "Zurück", UITheme.ButtonStyle))
+        {
+            AudioManager.Instance?.PlayClick();
             MainMenu.SetScreen(MenuScreen.Main);
+        }
     }
 
     void StartLanHost()

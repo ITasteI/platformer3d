@@ -63,6 +63,7 @@ public static class SceneBuilder
         cache = new Material(Shader.Find("Universal Render Pipeline/Lit"));
         cache.SetTexture("_BaseMap", tex);
         cache.SetFloat("_Smoothness", smoothness);
+        cache.enableInstancing = true;
         AssetDatabase.CreateAsset(cache, assetPath);
         return cache;
     }
@@ -129,6 +130,24 @@ public static class SceneBuilder
         {
             urpAsset = UniversalRenderPipelineAsset.Create(rendererData);
             AssetDatabase.CreateAsset(urpAsset, pipelinePath);
+        }
+
+        bool hasSsao = false;
+        foreach (var feature in rendererData.rendererFeatures)
+        {
+            if (feature is ScreenSpaceAmbientOcclusion)
+            {
+                hasSsao = true;
+                break;
+            }
+        }
+        if (!hasSsao)
+        {
+            var ssao = ScriptableObject.CreateInstance<ScreenSpaceAmbientOcclusion>();
+            ssao.name = "SSAO";
+            rendererData.rendererFeatures.Add(ssao);
+            AssetDatabase.AddObjectToAsset(ssao, rendererData);
+            rendererData.SetDirty();
         }
 
         GraphicsSettings.defaultRenderPipeline = urpAsset;
@@ -202,6 +221,7 @@ public static class SceneBuilder
         CreateGoalFlag(topPos);
         ParticleSystem stars = CreateStarField();
         CreateGameManager();
+        CreateAudioManager();
         CreateSettingsMenu();
         CreateAtmosphereManager(sunLight, stars);
 
@@ -402,11 +422,31 @@ public static class SceneBuilder
 
     static void CreateGround()
     {
-        GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        ground.name = "Ground";
-        ground.transform.position = Vector3.zero;
-        ground.transform.localScale = new Vector3(2f, 1f, 2f);
-        SetColor(ground, new Color(0.4f, 0.38f, 0.35f));
+        GameObject collisionPlane = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        collisionPlane.name = "GroundCollision";
+        collisionPlane.transform.position = Vector3.zero;
+        collisionPlane.transform.localScale = new Vector3(2f, 1f, 2f);
+        collisionPlane.GetComponent<Renderer>().enabled = false;
+
+        GameObject visualRoot = new GameObject("GroundVisual");
+        const int gridSize = 6;
+        const float tileScale = 4f;
+        float half = (gridSize - 1) * tileScale * 0.5f;
+
+        for (int gx = 0; gx < gridSize; gx++)
+        {
+            for (int gz = 0; gz < gridSize; gz++)
+            {
+                Vector3 pos = new Vector3(gx * tileScale - half, 0f, gz * tileScale - half);
+                GameObject tile = InstantiateKenney("block-grass-large", pos);
+                tile.name = "GroundTile";
+                tile.transform.SetParent(visualRoot.transform);
+                tile.transform.localScale = Vector3.one * tileScale;
+                tile.transform.rotation = Quaternion.Euler(0f, ((gx + gz) % 4) * 90f, 0f);
+                foreach (var col in tile.GetComponentsInChildren<Collider>())
+                    Object.DestroyImmediate(col);
+            }
+        }
     }
 
     static readonly string[] JunkyardProps = { "crate", "crate-strong", "barrel", "tree-pine", "tree", "rocks" };
@@ -425,6 +465,7 @@ public static class SceneBuilder
             prop.name = "JunkProp_" + i;
             prop.transform.SetParent(decor.transform);
             prop.transform.rotation = Quaternion.Euler(0f, i * 23f, 0f);
+            prop.isStatic = true;
         }
     }
 
@@ -468,6 +509,7 @@ public static class SceneBuilder
             GameObject building = InstantiateCityProp(modelName, pos);
             building.transform.SetParent(parent);
             building.transform.rotation = Quaternion.Euler(0f, (i * 47f) % 360f, 0f);
+            building.isStatic = true;
 
             float scale = Mathf.Lerp(scaleMin, scaleMax, Mathf.Abs(Mathf.Sin(i * 12.9898f)));
             building.transform.localScale = Vector3.one * scale;
@@ -509,75 +551,144 @@ public static class SceneBuilder
         }
     }
 
+    const float MinVerticalGap = 1.0f;
+    const float MaxVerticalGap = 3.0f;
+    const float MinHorizontalGap = 1.8f;
+    const float MaxHorizontalGap = 5.0f;
+    const int CheckpointInterval = 12;
+
+    static float HashFloat(float seed)
+    {
+        return Mathf.Abs(Mathf.Sin(seed * 12.9898f + 78.233f)) % 1f;
+    }
+
     static Vector3 CreateTower()
     {
-        float cumulativeHeight = 0.5f;
-        Vector3 lastPos = Vector3.zero;
+        Vector3 prevPos = new Vector3(0f, 0.5f, 0f);
+        Vector3 lastPos = prevPos;
+        float angle = 0f;
 
         for (int i = 0; i < PlatformCount; i++)
         {
             float t = i / (float)(PlatformCount - 1);
+            bool earlySection = i < 4;
+            int block = i / 8;
+            bool isCheckpoint = i > 0 && i % CheckpointInterval == 0;
 
-            float stepHeight = i < 4 ? Mathf.Lerp(1.0f, 1.8f, i / 3f) : Mathf.Lerp(1.8f, 4.2f, t);
-            cumulativeHeight += stepHeight;
+            int flavor = Mathf.FloorToInt(HashFloat(block) * 5f) % 5;
+            if (isCheckpoint)
+                flavor = -1;
 
-            float angle = i * (0.5f + t * 0.15f);
-            float radius = i < 4 ? Mathf.Lerp(1.8f, 3.2f, i / 3f) : Mathf.Lerp(3.2f, 4.6f, t) + (i % 5) * 0.5f;
-            float jitter = i < 4 ? 0f : Mathf.Sin(i * 12.9898f) * 0.3f;
-            Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, cumulativeHeight + jitter, Mathf.Cos(angle) * radius);
+            bool isMovingType = flavor == 2;
+            bool isSwingingType = flavor == 3;
+            float dynamicPenalty = (isMovingType || isSwingingType) ? 0.7f : 1f;
 
-            int shapeType = i % 3;
-            float sizeMultiplier = Mathf.Lerp(1f, 0.55f, t);
+            float stepHeight = earlySection
+                ? Mathf.Lerp(1.0f, MinVerticalGap + 0.3f, i / 3f)
+                : Mathf.Lerp(MinVerticalGap + 0.3f, MaxVerticalGap, t) * dynamicPenalty;
 
-            GameObject platform = BuildPlatformShape(shapeType, i, sizeMultiplier);
+            float horizontalGap = earlySection
+                ? Mathf.Lerp(1.8f, MinHorizontalGap + 0.6f, i / 3f)
+                : Mathf.Lerp(MinHorizontalGap + 0.6f, MaxHorizontalGap, t) * dynamicPenalty;
+
+            angle += earlySection ? 0.4f : (0.45f + t * 0.2f);
+            Vector3 dir = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
+            Vector3 pos = prevPos + dir * horizontalGap;
+            pos.y = prevPos.y + stepHeight;
+
+            int shapeType = i % 4;
+            float sizeMultiplier = Mathf.Lerp(1f, 0.6f, t);
+
+            GameObject platform = BuildPlatformShape(shapeType, i, sizeMultiplier, t);
             platform.transform.position = pos;
 
-            int block = i / 8;
-            int flavor = block % 5;
-            bool earlySection = i < 3;
-
-            switch (flavor)
+            if (isCheckpoint)
             {
-                case 0:
-                    if (!earlySection && i % 6 == 2)
-                        CreateHazard(pos + new Vector3(0f, 0.9f, 0f), i);
-                    break;
-                case 1:
-                    if (!earlySection)
-                        platform.AddComponent<CrumblingPlatform>();
-                    break;
-                case 2:
-                    if (!earlySection)
-                    {
-                        var mover = platform.AddComponent<MovingPlatform>();
-                        mover.moveOffset = (i % 2 == 0) ? new Vector3(3f + t * 2f, 0f, 0f) : new Vector3(0f, 0f, 3f + t * 2f);
-                        mover.speed = 0.8f + t * 0.6f;
-                    }
-                    break;
-                case 3:
-                    if (!earlySection)
-                    {
-                        var swing = platform.AddComponent<SwingingPlatform>();
-                        swing.armLength = 2.5f + (i % 3);
-                        swing.swingAngleDeg = 35f + t * 20f;
-                        swing.speed = 0.9f + t * 0.4f;
-                    }
-                    break;
-                default:
-                    if (!earlySection && i % 4 == 0)
-                        CreateBouncePad(pos + new Vector3(0f, 0.35f, 0f), i);
-                    if (!earlySection && i % 7 == 4)
-                        CreateHazard(pos + new Vector3(0f, 0.9f, 0f), i);
-                    break;
+                CreateCheckpointMarker(pos, i);
+            }
+            else
+            {
+                switch (flavor)
+                {
+                    case 0:
+                        if (!earlySection && i % 6 == 2)
+                            CreateHazard(pos + new Vector3(0f, 0.9f, 0f), i);
+                        break;
+                    case 1:
+                        if (!earlySection)
+                            platform.AddComponent<CrumblingPlatform>();
+                        break;
+                    case 2:
+                        if (!earlySection)
+                        {
+                            var mover = platform.AddComponent<MovingPlatform>();
+                            mover.moveOffset = (i % 2 == 0) ? new Vector3(2.2f, 0f, 0f) : new Vector3(0f, 0f, 2.2f);
+                            mover.speed = 0.8f + t * 0.5f;
+                        }
+                        break;
+                    case 3:
+                        if (!earlySection)
+                        {
+                            var swing = platform.AddComponent<SwingingPlatform>();
+                            swing.armLength = 2f + (i % 3) * 0.5f;
+                            swing.swingAngleDeg = 30f + t * 15f;
+                            swing.speed = 0.9f + t * 0.3f;
+                        }
+                        break;
+                    default:
+                        if (!earlySection && i % 4 == 0)
+                            CreateBouncePad(pos + new Vector3(0f, 0.35f, 0f), i);
+                        if (!earlySection && i % 7 == 4)
+                            CreateHazard(pos + new Vector3(0f, 0.9f, 0f), i);
+                        break;
+                }
             }
 
-            if (i % 2 == 0)
+            if (i % 2 == 0 && !isCheckpoint)
                 CreateGem(pos + new Vector3(0f, 1.1f, 0f), i);
 
+            if (i % 3 == 1 && !isCheckpoint)
+                CreateClimbDecor(pos, i, t);
+
+            prevPos = pos;
             lastPos = pos;
         }
 
         return lastPos;
+    }
+
+    static readonly string[] LowZoneDecor = { "rocks", "mushrooms", "plant", "fence-broken" };
+    static readonly string[] MidZoneDecor = { "poles", "sign", "fence-straight" };
+    static readonly string[] HighZoneDecor = { "flag", "poles" };
+
+    static void CreateClimbDecor(Vector3 platformPos, int index, float t)
+    {
+        string[] pool = t < 0.33f ? LowZoneDecor : (t < 0.66f ? MidZoneDecor : HighZoneDecor);
+        string modelName = pool[index % pool.Length];
+
+        float side = (index % 2 == 0) ? 1f : -1f;
+        Vector3 offset = new Vector3(side * 1.4f, 0.4f, side * 0.6f);
+
+        GameObject decor = InstantiateKenney(modelName, platformPos + offset);
+        decor.name = "ClimbDecor_" + index;
+        decor.transform.rotation = Quaternion.Euler(0f, index * 41f, 0f);
+        decor.transform.localScale = Vector3.one * 0.8f;
+        decor.isStatic = true;
+
+        foreach (var col in decor.GetComponentsInChildren<Collider>())
+            Object.DestroyImmediate(col);
+    }
+
+    static void CreateCheckpointMarker(Vector3 pos, int index)
+    {
+        GameObject marker = InstantiateKenney("sign", pos + new Vector3(0f, 0.7f, 0f));
+        marker.name = "Checkpoint_" + index;
+        marker.transform.localScale = Vector3.one * 1.3f;
+
+        BoxCollider trigger = marker.AddComponent<BoxCollider>();
+        trigger.isTrigger = true;
+        trigger.size = new Vector3(2f, 3f, 2f);
+        marker.AddComponent<Checkpoint>();
     }
 
     static void CreateGoalFlag(Vector3 topPlatformPos)
@@ -587,43 +698,44 @@ public static class SceneBuilder
         flag.transform.localScale = Vector3.one * 1.5f;
     }
 
-    static GameObject BuildPlatformShape(int shapeType, int index, float sizeMultiplier)
+    static readonly string[] LowZonePlatforms = { "crate-strong", "crate-item-strong", "pipe", "platform" };
+    static readonly string[] MidZonePlatforms = { "platform-fortified", "platform-overhang", "pipe", "brick" };
+    static readonly string[] HighZonePlatforms = { "platform-fortified", "platform-overhang", "platform-ramp" };
+
+    static GameObject BuildPlatformShape(int shapeType, int index, float sizeMultiplier, float t)
     {
-        GameObject platform;
-        switch (shapeType)
-        {
-            case 0:
-                platform = InstantiateKenney("crate-strong", Vector3.zero);
-                platform.transform.localScale = Vector3.one * sizeMultiplier * 1.6f;
-                break;
-            case 1:
-                platform = InstantiateKenney("pipe", Vector3.zero);
-                platform.transform.localScale = Vector3.one * sizeMultiplier * 1.4f;
-                platform.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
-                break;
-            default:
-                platform = InstantiateKenney("platform-fortified", Vector3.zero);
-                platform.transform.localScale = Vector3.one * sizeMultiplier * 1.4f;
-                break;
-        }
+        string[] pool = t < 0.33f ? LowZonePlatforms : (t < 0.66f ? MidZonePlatforms : HighZonePlatforms);
+        string modelName = pool[shapeType % pool.Length];
+
+        GameObject platform = InstantiateKenney(modelName, Vector3.zero);
+        platform.transform.localScale = Vector3.one * sizeMultiplier * (modelName == "pipe" ? 1.4f : 1.5f);
+        if (modelName == "pipe")
+            platform.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
+
         platform.name = "Platform_" + index;
         AddSolidCollider(platform);
         return platform;
     }
 
+    static readonly string[] HazardModels = { "saw", "spike-block", "trap-spikes" };
+    static readonly string[] GemModels = { "coin-gold", "coin-silver", "jewel" };
+
     static void CreateHazard(Vector3 pos, int index)
     {
-        GameObject hazard = InstantiateKenney("saw", pos);
+        string modelName = HazardModels[index % HazardModels.Length];
+        GameObject hazard = InstantiateKenney(modelName, pos);
         hazard.name = "Hazard_" + index;
         hazard.transform.localScale = Vector3.one * 1.1f;
         var col = AddSolidCollider(hazard);
         col.isTrigger = true;
-        hazard.AddComponent<Hazard>();
+        var hazardComp = hazard.AddComponent<Hazard>();
+        hazardComp.spins = modelName == "saw";
     }
 
     static void CreateGem(Vector3 pos, int index)
     {
-        GameObject gem = InstantiateKenney("coin-gold", pos);
+        string modelName = GemModels[index % GemModels.Length];
+        GameObject gem = InstantiateKenney(modelName, pos);
         gem.name = "Gem_" + index;
         gem.transform.localScale = Vector3.one * 1.2f;
         var col = AddSolidCollider(gem);
@@ -682,8 +794,30 @@ public static class SceneBuilder
     static GameObject CreateGameManager()
     {
         var gm = new GameObject("GameManager");
-        gm.AddComponent<GameManager>();
+        var manager = gm.AddComponent<GameManager>();
+        manager.topHeight = TopHeight;
         return gm;
+    }
+
+    const string AudioPath = "Assets/Audio/";
+
+    static void CreateAudioManager()
+    {
+        var go = new GameObject("AudioManager");
+        var audio = go.AddComponent<AudioManager>();
+
+        audio.footstepClips = new[]
+        {
+            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_concrete_000.ogg"),
+            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_concrete_001.ogg"),
+            AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "footstep_concrete_002.ogg"),
+        };
+        audio.jumpClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "jump.ogg");
+        audio.landClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "land.ogg");
+        audio.coinClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "coin.ogg");
+        audio.deathClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "death.ogg");
+        audio.checkpointClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "checkpoint.ogg");
+        audio.clickClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "click.ogg");
     }
 
     static void CreateSettingsMenu()
