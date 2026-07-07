@@ -1960,6 +1960,11 @@ public static class SceneBuilder
                 }
 
                 CreateGem(pos + coinOffset, i, coinType);
+
+                // Crash-style item crate on some platforms: an extra reward you smash, placed to the
+                // side as a small optional reach (jump-safety of the main path is untouched).
+                if (!earlySection && !isRestStop && i % 8 == 4)
+                    CreateCrate(pos + perpSide * 0.9f + new Vector3(0f, 0.75f, 0f), i, 5);
             }
 
             if (i % 3 == 1 && !isCheckpoint)
@@ -2393,6 +2398,17 @@ public static class SceneBuilder
         var coin = gem.AddComponent<Coin>();
         coin.type = type;
         coin.legendaryBaseScale = scale;
+    }
+
+    static void CreateCrate(Vector3 pos, int index, int coins)
+    {
+        GameObject crate = InstantiateKenney("crate-item", pos);
+        crate.name = "Crate_" + index;
+        crate.transform.localScale = Vector3.one * 1.1f;
+        var col = AddSolidCollider(crate);
+        col.isTrigger = true;
+        var c = crate.AddComponent<Crate>();
+        c.coins = coins;
     }
 
     static void CreateBouncePad(Vector3 pos, int index)
