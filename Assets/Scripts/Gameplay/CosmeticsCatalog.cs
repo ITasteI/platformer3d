@@ -8,6 +8,10 @@ public struct SkinDef
     public Color BaseColor;
     public bool HasEmission;
     public Color EmissionColor;
+
+    // Which Kenney character mesh this skin uses (they share one rig, so the animator works on all).
+    // Empty/null = the default base character. Lets skins be genuinely different shapes, not recolors.
+    public string Model;
 }
 
 public struct EffectDef
@@ -40,17 +44,17 @@ public static class CosmeticsCatalog
 {
     public static readonly SkinDef[] Skins =
     {
-        new SkinDef { Id = "standard", Name = "Standard", Price = 0, BaseColor = Color.white, HasEmission = false },
-        // Basic recolors - matte, no glow.
-        new SkinDef { Id = "green", Name = "Grün", Price = 40, BaseColor = new Color(0.25f, 0.75f, 0.3f), HasEmission = false },
-        new SkinDef { Id = "blue", Name = "Blau", Price = 40, BaseColor = new Color(0.25f, 0.5f, 0.95f), HasEmission = false },
-        new SkinDef { Id = "red", Name = "Rot", Price = 40, BaseColor = new Color(0.85f, 0.25f, 0.25f), HasEmission = false },
-        // Premium tiers - visibly glowing HDR emission so they clearly outshine the basics.
-        new SkinDef { Id = "gold", Name = "Gold", Price = 150, BaseColor = new Color(0.95f, 0.8f, 0.35f), HasEmission = true, EmissionColor = new Color(1.1f, 0.75f, 0.1f) },
-        new SkinDef { Id = "lava", Name = "Lava", Price = 300, BaseColor = new Color(0.25f, 0.08f, 0.05f), HasEmission = true, EmissionColor = new Color(2.4f, 0.5f, 0.06f) },
-        new SkinDef { Id = "ice", Name = "Eis", Price = 300, BaseColor = new Color(0.7f, 0.9f, 0.98f), HasEmission = true, EmissionColor = new Color(0.45f, 0.85f, 1.2f) },
-        new SkinDef { Id = "neon", Name = "Neon", Price = 500, BaseColor = new Color(0.05f, 0.05f, 0.08f), HasEmission = true, EmissionColor = new Color(2.0f, 0.15f, 2.4f) },
-        new SkinDef { Id = "galaxy", Name = "Galaxy", Price = 750, BaseColor = new Color(0.12f, 0.05f, 0.25f), HasEmission = true, EmissionColor = new Color(0.9f, 0.35f, 1.9f) },
+        new SkinDef { Id = "standard", Name = "Standard", Price = 0, BaseColor = Color.white, HasEmission = false, Model = "character-oobi" },
+        // Basic recolors of the base character - matte, no glow.
+        new SkinDef { Id = "green", Name = "Grün", Price = 40, BaseColor = new Color(0.25f, 0.75f, 0.3f), HasEmission = false, Model = "character-oobi" },
+        new SkinDef { Id = "blue", Name = "Blau", Price = 40, BaseColor = new Color(0.25f, 0.5f, 0.95f), HasEmission = false, Model = "character-oobi" },
+        new SkinDef { Id = "red", Name = "Rot", Price = 40, BaseColor = new Color(0.85f, 0.25f, 0.25f), HasEmission = false, Model = "character-oobi" },
+        // Premium tiers - each a DIFFERENT character model plus glowing HDR emission.
+        new SkinDef { Id = "gold", Name = "Goldwächter", Price = 150, BaseColor = new Color(0.95f, 0.8f, 0.35f), HasEmission = true, EmissionColor = new Color(1.1f, 0.75f, 0.1f), Model = "character-oopi" },
+        new SkinDef { Id = "lava", Name = "Lavagolem", Price = 300, BaseColor = new Color(0.25f, 0.08f, 0.05f), HasEmission = true, EmissionColor = new Color(2.4f, 0.5f, 0.06f), Model = "character-oodi" },
+        new SkinDef { Id = "ice", Name = "Eiswicht", Price = 300, BaseColor = new Color(0.7f, 0.9f, 0.98f), HasEmission = true, EmissionColor = new Color(0.45f, 0.85f, 1.2f), Model = "character-ooli" },
+        new SkinDef { Id = "neon", Name = "Neonbot", Price = 500, BaseColor = new Color(0.05f, 0.05f, 0.08f), HasEmission = true, EmissionColor = new Color(2.0f, 0.15f, 2.4f), Model = "character-oozi" },
+        new SkinDef { Id = "galaxy", Name = "Galaxywächter", Price = 750, BaseColor = new Color(0.12f, 0.05f, 0.25f), HasEmission = true, EmissionColor = new Color(0.9f, 0.35f, 1.9f), Model = "character-oopi" },
     };
 
     public static readonly EffectDef[] Effects =

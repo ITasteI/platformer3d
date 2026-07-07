@@ -423,18 +423,44 @@ public static class SceneBuilder
 
         var playerController = root.AddComponent<PlayerController>();
 
-        GameObject visual = InstantiateKenney("character-oobi", Vector3.zero);
-        visual.name = "CharacterVisual";
-        visual.transform.SetParent(root.transform);
-        visual.transform.localPosition = Vector3.zero;
-        visual.transform.localRotation = Quaternion.identity;
+        // Character visual: a parent holding every skin's character model (they share one Kenney rig,
+        // so one animator controller drives all of them). Only one is active at a time; PlayerCosmetics
+        // toggles them per equipped skin. Squash on the parent scales whichever model is active.
+        GameObject visualRoot = new GameObject("CharacterVisual");
+        visualRoot.transform.SetParent(root.transform);
+        visualRoot.transform.localPosition = Vector3.zero;
+        visualRoot.transform.localRotation = Quaternion.identity;
 
-        Animator animator = visual.AddComponent<Animator>();
-        animator.runtimeAnimatorController = BuildCharacterAnimator(KitPath + "character-oobi.fbx");
-        playerController.animator = animator;
-
-        var squash = visual.AddComponent<CharacterSquash>();
+        var squash = visualRoot.AddComponent<CharacterSquash>();
         squash.player = playerController;
+
+        RuntimeAnimatorController charController = BuildCharacterAnimator(KitPath + "character-oobi.fbx");
+
+        // Distinct character models the skin catalog references (oobi first = default base).
+        var modelNames = new System.Collections.Generic.List<string> { "character-oobi" };
+        foreach (var sk in CosmeticsCatalog.Skins)
+            if (!string.IsNullOrEmpty(sk.Model) && !modelNames.Contains(sk.Model))
+                modelNames.Add(sk.Model);
+
+        var modelObjects = new GameObject[modelNames.Count];
+        Animator animator = null;
+        for (int mi = 0; mi < modelNames.Count; mi++)
+        {
+            GameObject charGO = InstantiateKenney(modelNames[mi], Vector3.zero);
+            charGO.name = modelNames[mi];
+            charGO.transform.SetParent(visualRoot.transform);
+            charGO.transform.localPosition = Vector3.zero;
+            charGO.transform.localRotation = Quaternion.identity;
+
+            var a = charGO.AddComponent<Animator>();
+            a.runtimeAnimatorController = charController;
+            charGO.SetActive(mi == 0);
+
+            modelObjects[mi] = charGO;
+            if (mi == 0)
+                animator = a;
+        }
+        playerController.animator = animator;
 
         var admin = root.AddComponent<AdminController>();
         admin.player = playerController;
@@ -487,7 +513,9 @@ public static class SceneBuilder
         fx.Stop();
 
         var cosmetics = root.AddComponent<PlayerCosmetics>();
-        cosmetics.characterVisual = visual.transform;
+        cosmetics.modelObjects = modelObjects;
+        cosmetics.modelIds = modelNames.ToArray();
+        cosmetics.playerController = playerController;
         cosmetics.trail = trail;
         cosmetics.effectParticles = fx;
 
