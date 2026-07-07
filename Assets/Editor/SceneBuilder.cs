@@ -297,8 +297,10 @@ public static class SceneBuilder
 
         root.AddComponent<NetworkObject>();
         var netTransform = root.AddComponent<NetworkTransform>();
+        netTransform.AuthorityMode = NetworkTransform.AuthorityModes.Owner;
         netTransform.SyncPositionX = netTransform.SyncPositionY = netTransform.SyncPositionZ = true;
-        netTransform.SyncRotAngleX = netTransform.SyncRotAngleY = netTransform.SyncRotAngleZ = false;
+        netTransform.SyncRotAngleX = netTransform.SyncRotAngleZ = false;
+        netTransform.SyncRotAngleY = true;
 
         var controller = root.AddComponent<CharacterController>();
         controller.height = 2f;
@@ -319,6 +321,21 @@ public static class SceneBuilder
 
         var squash = visual.AddComponent<CharacterSquash>();
         squash.player = playerController;
+
+        var admin = root.AddComponent<AdminController>();
+        admin.player = playerController;
+
+        GameObject nameTagGO = new GameObject("NameTag");
+        nameTagGO.transform.SetParent(root.transform);
+        nameTagGO.transform.localPosition = new Vector3(0f, 2.3f, 0f);
+        TextMesh nameTagText = nameTagGO.AddComponent<TextMesh>();
+        nameTagText.characterSize = 0.12f;
+        nameTagText.fontSize = 48;
+        nameTagText.anchor = TextAnchor.LowerCenter;
+        nameTagText.alignment = TextAlignment.Center;
+        nameTagText.color = Color.white;
+        var nameTagDisplay = nameTagGO.AddComponent<PlayerNameTagDisplay>();
+        nameTagDisplay.player = playerController;
 
         var camGO = new GameObject("PlayerCamera");
         camGO.transform.SetParent(root.transform);
@@ -764,12 +781,27 @@ public static class SceneBuilder
     const float MinVerticalGap = 1.0f;
     const float MaxVerticalGap = 3.0f;
     const float MinHorizontalGap = 1.8f;
-    const float MaxHorizontalGap = 5.0f;
+    const float MaxHorizontalGap = 4.5f;
     const int CheckpointInterval = 12;
+
+    // Mirrors PlayerController's jump physics (moveSpeed/jumpHeight/gravity) so generated
+    // gaps can be checked against what a single jump can actually reach.
+    const float PlayerMoveSpeed = 7f;
+    const float PlayerJumpHeight = 1.8f;
+    const float PlayerGravity = -25f;
+    const float JumpSafetyMargin = 0.7f;
 
     static float HashFloat(float seed)
     {
         return Mathf.Abs(Mathf.Sin(seed * 12.9898f + 78.233f)) % 1f;
+    }
+
+    // Height a single jump can reach by the time it has covered horizontalGap sideways.
+    static float MaxSingleJumpHeightAt(float horizontalGap)
+    {
+        float v0 = Mathf.Sqrt(PlayerJumpHeight * -2f * PlayerGravity);
+        float t = horizontalGap / PlayerMoveSpeed;
+        return v0 * t + 0.5f * PlayerGravity * t * t;
     }
 
     static readonly float[] GateThresholds = { 0.2f, 0.4f, 0.6f, 0.8f };
@@ -788,13 +820,17 @@ public static class SceneBuilder
             int block = i / 8;
             bool isCheckpoint = i > 0 && i % CheckpointInterval == 0;
 
-            int flavor = Mathf.FloorToInt(HashFloat(block) * 5f) % 5;
-            if (isCheckpoint)
+            bool isRestStop = !earlySection && !isCheckpoint && i % CheckpointInterval == CheckpointInterval - 1;
+
+            // Flavors: 0 static(+hazard), 1 crumbling, 2 moving, 3 swinging, 4 floating, 5 timed, 6 bouncepad(+hazard).
+            int flavor = Mathf.FloorToInt(HashFloat(block) * 7f) % 7;
+            if (isCheckpoint || isRestStop)
                 flavor = -1;
 
             bool isMovingType = flavor == 2;
             bool isSwingingType = flavor == 3;
-            float dynamicPenalty = (isMovingType || isSwingingType) ? 0.7f : 1f;
+            bool isFloatingType = flavor == 4;
+            float dynamicPenalty = (isMovingType || isSwingingType) ? 0.7f : (isFloatingType ? 0.85f : 1f);
 
             float stepHeight = earlySection
                 ? Mathf.Lerp(1.0f, MinVerticalGap + 0.3f, i / 3f)
@@ -804,13 +840,24 @@ public static class SceneBuilder
                 ? Mathf.Lerp(1.8f, MinHorizontalGap + 0.6f, i / 3f)
                 : Mathf.Lerp(MinHorizontalGap + 0.6f, MaxHorizontalGap, t) * dynamicPenalty;
 
+            // Never generate a vertical gap a single jump can't reach at that horizontal distance.
+            float safeMaxHeight = Mathf.Max(0.5f, MaxSingleJumpHeightAt(horizontalGap) * JumpSafetyMargin);
+            stepHeight = Mathf.Min(stepHeight, safeMaxHeight);
+
             angle += earlySection ? 0.4f : (0.45f + t * 0.2f);
             Vector3 dir = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
             Vector3 pos = prevPos + dir * horizontalGap;
             pos.y = prevPos.y + stepHeight;
+            Vector3 perpSide = new Vector3(dir.z, 0f, -dir.x) * (i % 2 == 0 ? 1f : -1f);
 
             int shapeType = i % 4;
             float sizeMultiplier = Mathf.Lerp(1f, 0.6f, t);
+
+            bool isPrecision = flavor == 0 && !earlySection && !isRestStop && i % 9 == 5;
+            if (isRestStop)
+                sizeMultiplier *= 1.6f;
+            else if (isPrecision)
+                sizeMultiplier *= 0.65f;
 
             GameObject platform = BuildPlatformShape(shapeType, i, sizeMultiplier, t);
             platform.transform.position = pos;
@@ -819,13 +866,19 @@ public static class SceneBuilder
             {
                 CreateCheckpointMarker(pos, i);
             }
+            else if (isRestStop)
+            {
+                // Safe, oversized breather platform before the next checkpoint - no hazards, no dynamics.
+            }
             else
             {
                 switch (flavor)
                 {
                     case 0:
                         if (!earlySection && i % 6 == 2)
-                            CreateHazard(pos + new Vector3(0f, 0.9f, 0f), i);
+                            CreateHazard(pos + perpSide * (0.55f * sizeMultiplier) + new Vector3(0f, 0.9f, 0f), i);
+                        else if (!earlySection && i % 15 == 7)
+                            platform.AddComponent<RotatingPlatform>();
                         break;
                     case 1:
                         if (!earlySection)
@@ -848,11 +901,28 @@ public static class SceneBuilder
                             swing.speed = 0.9f + t * 0.3f;
                         }
                         break;
+                    case 4:
+                        if (!earlySection)
+                        {
+                            var floater = platform.AddComponent<FloatingPlatform>();
+                            floater.amplitude = 0.35f + (i % 3) * 0.1f;
+                            floater.speed = 1f + t * 0.4f;
+                        }
+                        break;
+                    case 5:
+                        if (!earlySection)
+                        {
+                            var timed = platform.AddComponent<TimedPlatform>();
+                            timed.solidDuration = 3.2f;
+                            timed.goneDuration = 1.2f;
+                            timed.phaseOffset = i * 0.6f;
+                        }
+                        break;
                     default:
                         if (!earlySection && i % 4 == 0)
                             CreateBouncePad(pos + new Vector3(0f, 0.35f, 0f), i);
                         if (!earlySection && i % 7 == 4)
-                            CreateHazard(pos + new Vector3(0f, 0.9f, 0f), i);
+                            CreateHazard(pos + perpSide * (0.55f * sizeMultiplier) + new Vector3(0f, 0.9f, 0f), i);
                         break;
                 }
             }

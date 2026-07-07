@@ -1,10 +1,13 @@
 using UnityEngine;
 
-public class SwingingPlatform : MonoBehaviour
+[DefaultExecutionOrder(-10)]
+public class SwingingPlatform : MonoBehaviour, IMovingSurface
 {
     public float armLength = 3f;
     public float swingAngleDeg = 45f;
     public float speed = 1f;
+
+    public Vector3 FrameDelta { get; private set; }
 
     private Vector3 pivot;
     private float baseAngle;
@@ -24,20 +27,22 @@ public class SwingingPlatform : MonoBehaviour
         float angle = baseAngle + Mathf.Sin(Time.time * speed) * swingAngleDeg;
         float rad = angle * Mathf.Deg2Rad;
         Vector3 offset = new Vector3(Mathf.Sin(rad) * armLength, -Mathf.Cos(rad) * armLength, 0f);
-        transform.position = pivot + offset;
+        Vector3 newPos = pivot + offset;
+        FrameDelta = newPos - transform.position;
+        transform.position = newPos;
     }
 
     void OnTriggerEnter(Collider other)
     {
         var player = other.GetComponent<PlayerController>();
         if (player != null && player.IsOwner)
-            other.transform.SetParent(transform);
+            player.SetCurrentPlatform(this);
     }
 
     void OnTriggerExit(Collider other)
     {
         var player = other.GetComponent<PlayerController>();
         if (player != null && player.IsOwner)
-            other.transform.SetParent(null);
+            player.ClearCurrentPlatform(this);
     }
 }

@@ -1,9 +1,24 @@
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : NetworkBehaviour
 {
+    public NetworkVariable<FixedString32Bytes> playerName = new NetworkVariable<FixedString32Bytes>(
+        default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
+    // Animator state, replicated so other clients see this player actually walking/jumping
+    // instead of standing frozen in idle (only the owner ever runs HandleAnimation locally).
+    private readonly NetworkVariable<float> netSpeed = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private readonly NetworkVariable<bool> netGrounded = new NetworkVariable<bool>(
+        true, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private readonly NetworkVariable<bool> netCrouching = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private readonly NetworkVariable<float> netVerticalVelocity = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
     [Header("Movement")]
     public float moveSpeed = 7f;
     public float rotationSpeed = 12f;
@@ -47,6 +62,7 @@ public class PlayerController : NetworkBehaviour
     public bool IsFlying => isFlying;
     public bool AbilityReady => cooldownRemaining <= 0f;
     public float CooldownRemaining => Mathf.Max(0f, cooldownRemaining);
+    public Vector3 CheckpointPosition => checkpoint;
 
     private CharacterController controller;
     private Vector3 velocity;
@@ -67,6 +83,35 @@ public class PlayerController : NetworkBehaviour
     private float dashTimer;
     private float dashCooldownTimer;
     private Vector3 dashDirection;
+    private IMovingSurface currentPlatform;
+    private bool adminFlyEnabled;
+    private bool adminInvincible;
+    private float adminSpeedMultiplier = 1f;
+
+    public void SetCurrentPlatform(IMovingSurface platform)
+    {
+        currentPlatform = platform;
+    }
+
+    public void ClearCurrentPlatform(IMovingSurface platform)
+    {
+        if (currentPlatform == platform)
+            currentPlatform = null;
+    }
+
+    public void SetAdminFly(bool enabled) => adminFlyEnabled = enabled;
+    public void SetAdminInvincible(bool enabled) => adminInvincible = enabled;
+    public void SetAdminSpeedMultiplier(float multiplier) => adminSpeedMultiplier = multiplier;
+
+    public void AdminTeleport(Vector3 pos)
+    {
+        controller.enabled = false;
+        transform.position = pos;
+        controller.enabled = true;
+        velocity = Vector3.zero;
+    }
+
+    public void AdminRespawn() => RespawnAtCheckpoint();
 
     void Awake()
     {
@@ -105,12 +150,31 @@ public class PlayerController : NetworkBehaviour
             TutorialOverlay.ShowIfFirstTime();
             if (GameManager.Instance != null)
                 GameManager.Instance.player = transform;
+
+            playerName.Value = PlayerProfile.Name;
+
+            SaveData save = SaveSystem.Load();
+            if (save != null)
+            {
+                checkpoint = save.checkpointPosition;
+                controller.enabled = false;
+                transform.position = checkpoint;
+                controller.enabled = true;
+                highestY = checkpoint.y;
+                GameManager.Instance?.SetCoinCount(save.coinCount);
+            }
         }
     }
 
     void Update()
     {
-        if (!IsOwner || MainMenu.IsBlockingGameplay || WinScreen.HasWon || TutorialOverlay.IsVisible)
+        if (!IsOwner)
+        {
+            ApplyRemoteAnimation();
+            return;
+        }
+
+        if (MainMenu.IsBlockingGameplay || WinScreen.HasWon || TutorialOverlay.IsVisible)
             return;
 
         float posY = transform.position.y;
@@ -120,7 +184,8 @@ public class PlayerController : NetworkBehaviour
         if (posY < highestY - noReturnBuffer || posY < fallDeathY)
         {
             Die();
-            return;
+            if (!adminInvincible)
+                return;
         }
 
         HandleCrouch();
@@ -132,14 +197,46 @@ public class PlayerController : NetworkBehaviour
         if (dashTimer <= 0f)
             HandleMovement();
 
-        ApplyGravity();
+        if (adminFlyEnabled && AdminAuth.IsAdmin)
+            HandleAdminFly();
+        else
+            ApplyGravity();
+
+        ApplyPlatformMotion();
         HandleAnimation();
+    }
+
+    void HandleAdminFly()
+    {
+        float vertical = 0f;
+        if (Input.GetKey(KeyCode.Space))
+            vertical += 1f;
+        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.C))
+            vertical -= 1f;
+
+        velocity.y = vertical * flySpeed;
+        controller.Move(new Vector3(0f, velocity.y * Time.deltaTime, 0f));
+    }
+
+    void ApplyPlatformMotion()
+    {
+        if (currentPlatform != null)
+            controller.Move(currentPlatform.FrameDelta);
     }
 
     public void Die()
     {
+        if (adminInvincible)
+            return;
+
+        RespawnAtCheckpoint();
+    }
+
+    void RespawnAtCheckpoint()
+    {
         AudioManager.Instance?.PlayDeath();
         EffectsManager.Instance?.PlayDust(transform.position);
+        currentPlatform = null;
         controller.enabled = false;
         transform.position = checkpoint;
         controller.enabled = true;
@@ -182,6 +279,11 @@ public class PlayerController : NetworkBehaviour
 
     void HandleAnimation()
     {
+        netSpeed.Value = currentSpeed;
+        netGrounded.Value = controller.isGrounded;
+        netCrouching.Value = isCrouching;
+        netVerticalVelocity.Value = velocity.y;
+
         if (animator == null)
             return;
 
@@ -189,6 +291,17 @@ public class PlayerController : NetworkBehaviour
         animator.SetBool("Grounded", controller.isGrounded);
         animator.SetBool("Crouching", isCrouching);
         animator.SetFloat("VerticalVelocity", velocity.y);
+    }
+
+    void ApplyRemoteAnimation()
+    {
+        if (animator == null)
+            return;
+
+        animator.SetFloat("Speed", netSpeed.Value);
+        animator.SetBool("Grounded", netGrounded.Value);
+        animator.SetBool("Crouching", netCrouching.Value);
+        animator.SetFloat("VerticalVelocity", netVerticalVelocity.Value);
     }
 
     void HandleCrouch()
@@ -229,7 +342,7 @@ public class PlayerController : NetworkBehaviour
 
         UITheme.EnsureInit();
         string status = AbilityReady ? "Flug (Q): bereit" : $"Flug (Q): {CooldownRemaining:0}s";
-        GUI.Label(new Rect(20, 108, 300, 30), status, UITheme.HudStyle);
+        GUI.Label(new Rect(20, 132, 300, 30), status, UITheme.HudStyle);
     }
 
     void HandleGroundState()
@@ -295,7 +408,7 @@ public class PlayerController : NetworkBehaviour
             Quaternion targetRotation = Quaternion.LookRotation(moveDir);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
 
-            float speed = isCrouching ? moveSpeed * crouchSpeedMultiplier : moveSpeed;
+            float speed = (isCrouching ? moveSpeed * crouchSpeedMultiplier : moveSpeed) * adminSpeedMultiplier;
             controller.Move(moveDir * speed * Time.deltaTime);
             currentSpeed = speed;
         }

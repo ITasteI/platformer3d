@@ -12,6 +12,9 @@ public class Checkpoint : MonoBehaviour
 
         player.SetCheckpoint(transform.position + Vector3.up);
 
+        int coins = GameManager.Instance != null ? GameManager.Instance.CoinCount : 0;
+        SaveSystem.SaveCheckpoint(player.CheckpointPosition, coins);
+
         if (!activated)
         {
             activated = true;

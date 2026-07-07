@@ -5,11 +5,14 @@ public class SettingsMenu : MonoBehaviour
 {
     const string VolumePrefKey = "MasterVolume";
     private float volume = 1f;
+    private string nameInput = "";
+    private string nameStatus = "";
 
     void Awake()
     {
         volume = PlayerPrefs.GetFloat(VolumePrefKey, 1f);
         AudioListener.volume = volume;
+        nameInput = PlayerProfile.Name;
     }
 
     void OnGUI()
@@ -23,13 +26,34 @@ public class SettingsMenu : MonoBehaviour
         GUI.color = new Color(1f, 1f, 1f, MainMenu.FadeAlpha);
 
         float w = 380f;
-        float h = 420f;
+        float h = 470f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
         GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
         GUI.Label(new Rect(x, y + 12, w, 28), "Einstellungen", UITheme.TitleStyle);
         float curY = y + 55f;
+
+        GUI.Label(new Rect(x + 20, curY, w - 40, 20), "Benutzername:", UITheme.LabelStyle);
+        curY += 22f;
+        nameInput = GUI.TextField(new Rect(x + 20, curY, w - 130, 26), nameInput, PlayerProfile.MaxNameLength);
+        if (GUI.Button(new Rect(x + w - 100, curY, 80, 26), "Speichern", UITheme.ButtonStyle))
+        {
+            if (PlayerProfile.TrySetName(nameInput, out string sanitized))
+            {
+                nameInput = sanitized;
+                nameStatus = "Gespeichert.";
+                AudioManager.Instance?.PlayClick();
+            }
+            else
+            {
+                nameStatus = "Ungültiger Name.";
+            }
+        }
+        curY += 26f;
+        if (nameStatus.Length > 0)
+            GUI.Label(new Rect(x + 20, curY, w - 40, 18), nameStatus, UITheme.LabelStyle);
+        curY += 26f;
 
         GUI.Label(new Rect(x + 20, curY, w - 40, 20), $"Lautstärke: {Mathf.RoundToInt(volume * 100f)}%", UITheme.LabelStyle);
         curY += 22f;
