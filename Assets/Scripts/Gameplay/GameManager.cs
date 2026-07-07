@@ -10,7 +10,7 @@ public class GameManager : MonoBehaviour
     public int totalStages = 8;
     public float StartTime { get; private set; }
 
-    static readonly string[] WorldNames = { "Schrottplatz", "Industrieanlage", "Orbit-Basis" };
+    static readonly string[] WorldNames = { "Wiesenland", "Vulkanfeld", "Wolkenreich", "Eiskristall", "Sternenkrone" };
 
     void Awake()
     {
@@ -30,7 +30,7 @@ public class GameManager : MonoBehaviour
 
     public static string GetWorldName(float t)
     {
-        int index = t < 0.33f ? 0 : (t < 0.66f ? 1 : 2);
+        int index = t < 0.2f ? 0 : (t < 0.4f ? 1 : (t < 0.6f ? 2 : (t < 0.8f ? 3 : 4)));
         return WorldNames[index];
     }
 

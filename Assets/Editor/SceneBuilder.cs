@@ -16,6 +16,7 @@ public static class SceneBuilder
     const float TopHeight = 500f;
     const string KitPath = "Assets/KenneyKit/";
     const string CityKitPath = "Assets/CityKit/";
+    const string NatureKitPath = "Assets/NatureKit/";
 
     static Material kenneyMaterial;
     static Material cityMaterial;
@@ -104,6 +105,17 @@ public static class SceneBuilder
     static GameObject InstantiateCityProp(string modelName, Vector3 pos)
     {
         return InstantiateModel(CityKitPath, GetCityMaterial(), modelName, pos);
+    }
+
+    static GameObject InstantiateNature(string modelName, Vector3 pos)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(NatureKitPath + modelName + ".fbx");
+        if (prefab == null)
+            return null;
+        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+        instance.name = modelName;
+        instance.transform.position = pos;
+        return instance;
     }
 
     static BoxCollider AddSolidCollider(GameObject go)
@@ -215,12 +227,15 @@ public static class SceneBuilder
         GameObject playerPrefab = CreatePlayerPrefab();
         CreateNetworkManagerAndLobby(playerPrefab, lobbyCam);
         CreateGround();
+        CreateMountainRing();
+        CreateNatureScatter();
         CreateJunkyardDecor();
         CreateCityBackground();
         CreateClouds();
         Vector3 topPos = CreateTower();
         CreateGoalFlag(topPos);
         ParticleSystem stars = CreateStarField();
+        ParticleSystem weather = CreateWeatherParticles();
         CreateGameManager();
         CreateAudioManager();
         CreateMusicManager();
@@ -228,7 +243,7 @@ public static class SceneBuilder
         CreateSettingsMenu();
         CreateWinScreen();
         CreateTutorialOverlay();
-        CreateAtmosphereManager(sunLight, stars);
+        CreateAtmosphereManager(sunLight, stars, weather);
 
         string scenesDir = Path.Combine(Application.dataPath, "Scenes");
         Directory.CreateDirectory(scenesDir);
@@ -253,9 +268,11 @@ public static class SceneBuilder
         lightGO.transform.rotation = Quaternion.Euler(45f, -30f, 0f);
 
         Material sky = new Material(Shader.Find("Skybox/Procedural"));
-        sky.SetColor("_SkyTint", new Color(0.6f, 0.5f, 0.45f));
-        sky.SetColor("_GroundColor", new Color(0.35f, 0.3f, 0.28f));
-        sky.SetFloat("_AtmosphereThickness", 1.0f);
+        sky.SetColor("_SkyTint", new Color(0.55f, 0.72f, 0.55f));
+        sky.SetColor("_GroundColor", new Color(0.4f, 0.42f, 0.3f));
+        sky.SetFloat("_AtmosphereThickness", 1.15f);
+        sky.SetFloat("_SunSize", 0.06f);
+        sky.SetFloat("_SunSizeConvergence", 4f);
         RenderSettings.skybox = sky;
 
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
@@ -425,13 +442,208 @@ public static class SceneBuilder
         return controller;
     }
 
+    static Terrain groundTerrain;
+
+    static Texture2D CreateSolidTexture(string name, Color colorA, Color colorB)
+    {
+        string dir = Path.Combine(Application.dataPath, "Generated");
+        string assetPath = "Assets/Generated/" + name + ".png";
+
+        Texture2D existing = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+        if (existing != null)
+            return existing;
+
+        Directory.CreateDirectory(dir);
+        int size = 64;
+        Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float n = Mathf.PerlinNoise(x * 0.15f, y * 0.15f);
+                tex.SetPixel(x, y, Color.Lerp(colorA, colorB, n));
+            }
+        }
+        tex.Apply();
+
+        File.WriteAllBytes(Path.Combine(dir, name + ".png"), tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        AssetDatabase.Refresh();
+
+        TextureImporter importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+        if (importer != null)
+        {
+            importer.wrapMode = TextureWrapMode.Repeat;
+            importer.filterMode = FilterMode.Bilinear;
+            importer.mipmapEnabled = true;
+            importer.SaveAndReimport();
+        }
+
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+    }
+
     static void CreateGround()
     {
-        GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        ground.name = "Ground";
-        ground.transform.position = Vector3.zero;
-        ground.transform.localScale = new Vector3(2f, 1f, 2f);
-        SetColor(ground, new Color(0.36f, 0.4f, 0.3f));
+        const int resolution = 129;
+        const float size = 300f;
+        const float maxHeight = 10f;
+
+        TerrainData terrainData = new TerrainData();
+        terrainData.heightmapResolution = resolution;
+        terrainData.size = new Vector3(size, maxHeight, size);
+
+        Random.InitState(42);
+        float offsetX = Random.Range(0f, 1000f);
+        float offsetZ = Random.Range(0f, 1000f);
+
+        float[,] heights = new float[resolution, resolution];
+        for (int z = 0; z < resolution; z++)
+        {
+            for (int x = 0; x < resolution; x++)
+            {
+                float worldX = (x / (float)(resolution - 1) - 0.5f) * size;
+                float worldZ = (z / (float)(resolution - 1) - 0.5f) * size;
+                float distFromCenter = new Vector2(worldX, worldZ).magnitude;
+                float flatten = Mathf.Clamp01((distFromCenter - 8f) / 20f);
+
+                float noise = Mathf.PerlinNoise(x * 0.045f + offsetX, z * 0.045f + offsetZ);
+                float noise2 = Mathf.PerlinNoise(x * 0.12f + offsetX, z * 0.12f + offsetZ) * 0.3f;
+                heights[z, x] = (noise * 0.7f + noise2) * flatten * 0.55f;
+            }
+        }
+        terrainData.SetHeights(0, 0, heights);
+
+        Texture2D grassTex = CreateSolidTexture("GrassTerrainTex", new Color(0.3f, 0.4f, 0.2f), new Color(0.38f, 0.48f, 0.26f));
+        TerrainLayer layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>("Assets/GrassTerrainLayer.asset");
+        if (layer == null)
+        {
+            layer = new TerrainLayer();
+            layer.diffuseTexture = grassTex;
+            layer.tileSize = new Vector2(8f, 8f);
+            AssetDatabase.CreateAsset(layer, "Assets/GrassTerrainLayer.asset");
+        }
+        terrainData.terrainLayers = new[] { layer };
+
+        GameObject terrainGO = Terrain.CreateTerrainGameObject(terrainData);
+        terrainGO.name = "Ground";
+        terrainGO.transform.position = new Vector3(-size / 2f, 0f, -size / 2f);
+
+        groundTerrain = terrainGO.GetComponent<Terrain>();
+        groundTerrain.allowAutoConnect = false;
+    }
+
+    static float SampleTerrainHeight(Vector3 worldPos)
+    {
+        if (groundTerrain == null)
+            return 0f;
+        return groundTerrain.SampleHeight(worldPos);
+    }
+
+    static readonly string[] MeadowTrees = { "tree_default", "tree_oak", "tree_pineRoundA", "tree_pineTallA", "tree_small", "tree_fat" };
+    static readonly string[] MeadowRocks = { "rock_smallA", "rock_smallC", "rock_largeB", "stone_smallA" };
+    static readonly string[] MeadowGround = { "grass", "grass_large", "flower_purpleA", "flower_redA", "flower_yellowA", "mushroom_red", "mushroom_tan", "plant_bushSmall", "plant_flatShort" };
+
+    static void CreateNatureScatter()
+    {
+        Random.InitState(777);
+        GameObject root = new GameObject("NatureScatter");
+        int count = 90;
+
+        for (int i = 0; i < count; i++)
+        {
+            float angle = Random.Range(0f, Mathf.PI * 2f);
+            float radius = Random.Range(11f, 65f);
+            Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+            pos.y = SampleTerrainHeight(pos);
+
+            float roll = Random.value;
+            string modelName;
+            float scale;
+            if (roll < 0.35f) { modelName = MeadowTrees[Random.Range(0, MeadowTrees.Length)]; scale = Random.Range(0.9f, 1.4f); }
+            else if (roll < 0.6f) { modelName = MeadowRocks[Random.Range(0, MeadowRocks.Length)]; scale = Random.Range(0.8f, 1.6f); }
+            else { modelName = MeadowGround[Random.Range(0, MeadowGround.Length)]; scale = Random.Range(0.7f, 1.2f); }
+
+            GameObject obj = InstantiateNature(modelName, pos);
+            if (obj == null)
+                continue;
+
+            obj.name = "Nature_" + i;
+            obj.transform.SetParent(root.transform);
+            obj.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            obj.transform.localScale = Vector3.one * scale;
+            obj.isStatic = true;
+            obj.AddComponent<DistanceCuller>().maxDistance = 90f;
+        }
+    }
+
+    static Mesh BuildConeMesh(float radius, float height, int segments)
+    {
+        Mesh mesh = new Mesh();
+        Vector3[] vertices = new Vector3[segments + 2];
+        vertices[0] = Vector3.zero;
+        for (int i = 0; i < segments; i++)
+        {
+            float a = (i / (float)segments) * Mathf.PI * 2f;
+            vertices[i + 1] = new Vector3(Mathf.Cos(a) * radius, 0f, Mathf.Sin(a) * radius);
+        }
+        vertices[segments + 1] = new Vector3(0f, height, 0f);
+
+        int[] triangles = new int[segments * 3 * 2];
+        int t = 0;
+        for (int i = 0; i < segments; i++)
+        {
+            int next = (i + 1) % segments;
+            triangles[t++] = i + 1;
+            triangles[t++] = next + 1;
+            triangles[t++] = segments + 1;
+        }
+        for (int i = 0; i < segments; i++)
+        {
+            int next = (i + 1) % segments;
+            triangles[t++] = 0;
+            triangles[t++] = next + 1;
+            triangles[t++] = i + 1;
+        }
+
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    static void CreateMountainRing()
+    {
+        Random.InitState(2024);
+        GameObject root = new GameObject("MountainRange");
+        int count = 26;
+
+        for (int i = 0; i < count; i++)
+        {
+            float angle = (i / (float)count) * Mathf.PI * 2f + Random.Range(-0.15f, 0.15f);
+            float radius = Random.Range(260f, 420f);
+            float height = Random.Range(70f, 190f);
+            float baseRadius = Random.Range(35f, 70f);
+            Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, -10f, Mathf.Cos(angle) * radius);
+
+            GameObject mountain = new GameObject("Mountain_" + i);
+            mountain.transform.SetParent(root.transform);
+            mountain.transform.position = pos;
+
+            MeshFilter mf = mountain.AddComponent<MeshFilter>();
+            mf.sharedMesh = BuildConeMesh(baseRadius, height, 9);
+            MeshRenderer mr = mountain.AddComponent<MeshRenderer>();
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            float shade = Random.Range(0.35f, 0.6f);
+            Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            mat.SetColor("_BaseColor", new Color(Mathf.Clamp01(shade * 0.75f), Mathf.Clamp01(shade * 0.8f), Mathf.Clamp01(shade * 1.05f)));
+            mat.SetFloat("_Smoothness", 0.05f);
+            mat.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+            mr.sharedMaterial = mat;
+
+            mountain.isStatic = true;
+        }
     }
 
     static readonly string[] JunkyardProps = { "crate", "crate-strong", "barrel", "tree-pine", "tree", "rocks" };
@@ -560,13 +772,14 @@ public static class SceneBuilder
         return Mathf.Abs(Mathf.Sin(seed * 12.9898f + 78.233f)) % 1f;
     }
 
+    static readonly float[] GateThresholds = { 0.2f, 0.4f, 0.6f, 0.8f };
+
     static Vector3 CreateTower()
     {
         Vector3 prevPos = new Vector3(0f, 0.5f, 0f);
         Vector3 lastPos = prevPos;
         float angle = 0f;
-        bool gate1Placed = false;
-        bool gate2Placed = false;
+        bool[] gatesPlaced = new bool[GateThresholds.Length];
 
         for (int i = 0; i < PlatformCount; i++)
         {
@@ -650,15 +863,14 @@ public static class SceneBuilder
             if (i % 3 == 1 && !isCheckpoint)
                 CreateClimbDecor(pos, i, t);
 
-            if (!gate1Placed && t >= 0.33f)
+            for (int g = 0; g < GateThresholds.Length; g++)
             {
-                CreateWorldGate(pos, GameManager.GetWorldName(t));
-                gate1Placed = true;
-            }
-            else if (!gate2Placed && t >= 0.66f)
-            {
-                CreateWorldGate(pos, GameManager.GetWorldName(t));
-                gate2Placed = true;
+                if (!gatesPlaced[g] && t >= GateThresholds[g])
+                {
+                    CreateWorldGate(pos, GameManager.GetWorldName(t));
+                    gatesPlaced[g] = true;
+                    break;
+                }
             }
 
             prevPos = pos;
@@ -677,13 +889,24 @@ public static class SceneBuilder
             Object.DestroyImmediate(col);
     }
 
-    static readonly string[] LowZoneDecor = { "rocks", "mushrooms", "plant", "fence-broken" };
-    static readonly string[] MidZoneDecor = { "poles", "sign", "fence-straight" };
-    static readonly string[] HighZoneDecor = { "flag", "poles" };
+    static readonly string[] GrassZoneDecor = { "rocks", "mushrooms", "plant", "fence-broken" };
+    static readonly string[] VolcanoZoneDecor = { "rocks", "spike-block", "poles" };
+    static readonly string[] CloudZoneDecor = { "flag", "poles" };
+    static readonly string[] IceZoneDecor = { "rocks", "poles", "sign" };
+    static readonly string[] FinalZoneDecor = { "flag", "poles", "sign" };
+
+    static string[] GetZoneDecorPool(float t)
+    {
+        if (t < 0.2f) return GrassZoneDecor;
+        if (t < 0.4f) return VolcanoZoneDecor;
+        if (t < 0.6f) return CloudZoneDecor;
+        if (t < 0.8f) return IceZoneDecor;
+        return FinalZoneDecor;
+    }
 
     static void CreateClimbDecor(Vector3 platformPos, int index, float t)
     {
-        string[] pool = t < 0.33f ? LowZoneDecor : (t < 0.66f ? MidZoneDecor : HighZoneDecor);
+        string[] pool = GetZoneDecorPool(t);
         string modelName = pool[index % pool.Length];
 
         float side = (index % 2 == 0) ? 1f : -1f;
@@ -789,13 +1012,24 @@ public static class SceneBuilder
         music.highZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_high.mp3");
     }
 
-    static readonly string[] LowZonePlatforms = { "crate-strong", "crate-item-strong", "pipe", "platform" };
-    static readonly string[] MidZonePlatforms = { "platform-fortified", "platform-overhang", "pipe", "brick" };
-    static readonly string[] HighZonePlatforms = { "platform-fortified", "platform-overhang", "platform-ramp" };
+    static readonly string[] GrassZonePlatforms = { "crate-strong", "crate-item-strong", "pipe", "platform" };
+    static readonly string[] VolcanoZonePlatforms = { "platform-fortified", "brick", "pipe", "platform" };
+    static readonly string[] CloudZonePlatforms = { "platform-overhang", "platform-ramp", "pipe" };
+    static readonly string[] IceZonePlatforms = { "platform-fortified", "platform-overhang", "brick" };
+    static readonly string[] FinalZonePlatforms = { "platform-fortified", "platform-overhang", "platform-ramp" };
+
+    static string[] GetZonePlatformPool(float t)
+    {
+        if (t < 0.2f) return GrassZonePlatforms;
+        if (t < 0.4f) return VolcanoZonePlatforms;
+        if (t < 0.6f) return CloudZonePlatforms;
+        if (t < 0.8f) return IceZonePlatforms;
+        return FinalZonePlatforms;
+    }
 
     static GameObject BuildPlatformShape(int shapeType, int index, float sizeMultiplier, float t)
     {
-        string[] pool = t < 0.33f ? LowZonePlatforms : (t < 0.66f ? MidZonePlatforms : HighZonePlatforms);
+        string[] pool = GetZonePlatformPool(t);
         string modelName = pool[shapeType % pool.Length];
 
         GameObject platform = InstantiateKenney(modelName, Vector3.zero);
@@ -882,6 +1116,40 @@ public static class SceneBuilder
         return ps;
     }
 
+    static ParticleSystem CreateWeatherParticles()
+    {
+        GameObject go = new GameObject("WeatherParticles");
+        var ps = go.AddComponent<ParticleSystem>();
+
+        var main = ps.main;
+        main.loop = true;
+        main.startLifetime = 6f;
+        main.startSpeed = 0.5f;
+        main.startSize = 0.12f;
+        main.startColor = Color.white;
+        main.maxParticles = 300;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.gravityModifier = 0.15f;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0f;
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.scale = new Vector3(30f, 4f, 30f);
+
+        var renderer = go.GetComponent<ParticleSystemRenderer>();
+        Shader particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (particleShader == null)
+            particleShader = Shader.Find("Universal Render Pipeline/Unlit");
+        var mat = new Material(particleShader);
+        if (mat.HasProperty("_BaseColor"))
+            mat.SetColor("_BaseColor", Color.white);
+        renderer.material = mat;
+
+        return ps;
+    }
+
     static GameObject CreateGameManager()
     {
         var gm = new GameObject("GameManager");
@@ -943,38 +1211,70 @@ public static class SceneBuilder
         go.AddComponent<TutorialOverlay>();
     }
 
-    static void CreateAtmosphereManager(Light sunLight, ParticleSystem stars)
+    static void CreateAtmosphereManager(Light sunLight, ParticleSystem stars, ParticleSystem weather)
     {
         var go = new GameObject("AtmosphereManager");
         var atmosphere = go.AddComponent<ZoneAtmosphere>();
         atmosphere.sunLight = sunLight;
         atmosphere.stars = stars;
+        atmosphere.weather = weather;
 
         atmosphere.zones = new[]
         {
+            // Wiesenland - warm grassy daylight, no weather
             new ZoneAtmosphere.Zone
             {
                 height = 0f,
-                fogColor = new Color(0.6f, 0.55f, 0.5f),
-                skyTint = new Color(0.6f, 0.5f, 0.45f),
-                lightColor = new Color(1f, 0.93f, 0.8f),
+                fogColor = new Color(0.65f, 0.72f, 0.58f),
+                skyTint = new Color(0.55f, 0.72f, 0.55f),
+                lightColor = new Color(1f, 0.95f, 0.82f),
                 lightIntensity = 1.2f,
+                particleColor = new Color(1f, 1f, 1f, 0f),
+                particleRate = 0f,
             },
+            // Vulkanfeld - hazy orange, drifting embers
             new ZoneAtmosphere.Zone
             {
-                height = TopHeight * 0.45f,
-                fogColor = new Color(0.85f, 0.9f, 0.97f),
-                skyTint = new Color(0.55f, 0.75f, 1f),
-                lightColor = new Color(1f, 1f, 0.98f),
-                lightIntensity = 1.3f,
+                height = TopHeight * 0.25f,
+                fogColor = new Color(0.5f, 0.22f, 0.12f),
+                skyTint = new Color(0.55f, 0.2f, 0.1f),
+                lightColor = new Color(1f, 0.55f, 0.3f),
+                lightIntensity = 1.35f,
+                particleColor = new Color(1f, 0.5f, 0.15f, 0.9f),
+                particleRate = 16f,
             },
+            // Wolkenreich - bright misty blue-white
+            new ZoneAtmosphere.Zone
+            {
+                height = TopHeight * 0.5f,
+                fogColor = new Color(0.88f, 0.92f, 0.98f),
+                skyTint = new Color(0.6f, 0.78f, 1f),
+                lightColor = new Color(1f, 1f, 0.98f),
+                lightIntensity = 1.35f,
+                particleColor = new Color(1f, 1f, 1f, 0.6f),
+                particleRate = 10f,
+            },
+            // Eiskristall - pale cyan, falling snow
+            new ZoneAtmosphere.Zone
+            {
+                height = TopHeight * 0.75f,
+                fogColor = new Color(0.78f, 0.9f, 0.95f),
+                skyTint = new Color(0.7f, 0.88f, 0.95f),
+                lightColor = new Color(0.85f, 0.93f, 1f),
+                lightIntensity = 1.1f,
+                particleColor = new Color(0.9f, 0.97f, 1f, 0.85f),
+                particleRate = 24f,
+            },
+            // Sternenkrone - deep space, stardust
             new ZoneAtmosphere.Zone
             {
                 height = TopHeight,
                 fogColor = new Color(0.02f, 0.02f, 0.08f),
-                skyTint = new Color(0.02f, 0.02f, 0.1f),
+                skyTint = new Color(0.05f, 0.03f, 0.12f),
                 lightColor = new Color(0.7f, 0.75f, 1f),
                 lightIntensity = 0.6f,
+                particleColor = new Color(0.7f, 0.6f, 1f, 0.7f),
+                particleRate = 6f,
             },
         };
     }

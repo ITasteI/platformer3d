@@ -10,11 +10,14 @@ public class ZoneAtmosphere : MonoBehaviour
         public Color skyTint;
         public Color lightColor;
         public float lightIntensity;
+        public Color particleColor;
+        public float particleRate;
     }
 
     public Transform player;
     public Light sunLight;
     public ParticleSystem stars;
+    public ParticleSystem weather;
     public Zone[] zones;
 
     private Material skyMat;
@@ -62,6 +65,15 @@ public class ZoneAtmosphere : MonoBehaviour
             float starT = Mathf.InverseLerp(topHeight - 35f, topHeight, h);
             var emission = stars.emission;
             emission.rateOverTime = Mathf.Lerp(0f, 60f, starT);
+        }
+
+        if (weather != null)
+        {
+            weather.transform.position = new Vector3(player.position.x, h + 8f, player.position.z);
+            var main = weather.main;
+            main.startColor = Color.Lerp(a.particleColor, b.particleColor, t);
+            var emission = weather.emission;
+            emission.rateOverTime = Mathf.Lerp(a.particleRate, b.particleRate, t);
         }
     }
 }
