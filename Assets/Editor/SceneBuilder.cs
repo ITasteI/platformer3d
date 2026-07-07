@@ -450,9 +450,39 @@ public static class SceneBuilder
             trailShader = Shader.Find("Sprites/Default");
         trail.material = new Material(trailShader);
 
+        // Cosmetic particle emitter (equippable effect). PlayerCosmetics reconfigures its color/
+        // size/speed/gravity/rate per effect so each one looks clearly different.
+        GameObject fxGO = new GameObject("CosmeticParticles");
+        fxGO.transform.SetParent(root.transform);
+        fxGO.transform.localPosition = new Vector3(0f, 0.5f, 0f);
+        var fx = fxGO.AddComponent<ParticleSystem>();
+        var fxMain = fx.main;
+        fxMain.loop = true;
+        fxMain.playOnAwake = false;
+        fxMain.startLifetime = 1f;
+        fxMain.startSpeed = 1f;
+        fxMain.startSize = 0.2f;
+        fxMain.simulationSpace = ParticleSystemSimulationSpace.World;
+        fxMain.maxParticles = 200;
+        var fxEmission = fx.emission;
+        fxEmission.rateOverTime = 0f;
+        var fxShape = fx.shape;
+        fxShape.shapeType = ParticleSystemShapeType.Sphere;
+        fxShape.radius = 0.35f;
+        var fxRenderer = fxGO.GetComponent<ParticleSystemRenderer>();
+        Shader fxShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (fxShader == null)
+            fxShader = Shader.Find("Sprites/Default");
+        var fxMat = new Material(fxShader);
+        if (fxMat.HasProperty("_BaseColor"))
+            fxMat.SetColor("_BaseColor", Color.white);
+        fxRenderer.material = fxMat;
+        fx.Stop();
+
         var cosmetics = root.AddComponent<PlayerCosmetics>();
         cosmetics.characterVisual = visual.transform;
         cosmetics.trail = trail;
+        cosmetics.effectParticles = fx;
 
         GameObject nameTagGO = new GameObject("NameTag");
         nameTagGO.transform.SetParent(root.transform);
@@ -1920,26 +1950,10 @@ public static class SceneBuilder
 
     static void CreateMusicManager()
     {
-        // The loop track is a very large (~2.5h) file, so stream it from disk instead of
-        // decompressing the whole thing into memory.
-        string loopPath = AudioPath + "Music/music_loop.mp3";
-        var audioImporter = AssetImporter.GetAtPath(loopPath) as AudioImporter;
-        if (audioImporter != null)
-        {
-            var settings = audioImporter.defaultSampleSettings;
-            if (settings.loadType != AudioClipLoadType.Streaming)
-            {
-                settings.loadType = AudioClipLoadType.Streaming;
-                settings.compressionFormat = AudioCompressionFormat.Vorbis;
-                settings.preloadAudioData = false;
-                audioImporter.defaultSampleSettings = settings;
-                audioImporter.SaveAndReimport();
-            }
-        }
-
+        // The loop track streams from StreamingAssets/music_loop.mp3 at runtime (see MusicManager)
+        // because the file is too large for Unity to import as an AudioClip.
         var go = new GameObject("MusicManager");
-        var music = go.AddComponent<MusicManager>();
-        music.loopClip = AssetDatabase.LoadAssetAtPath<AudioClip>(loopPath);
+        go.AddComponent<MusicManager>();
     }
 
     static readonly string[] GrassZonePlatforms = { "crate-strong", "crate-item-strong", "platform" };

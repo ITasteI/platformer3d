@@ -1,10 +1,15 @@
+using System;
+using System.Collections;
+using System.IO;
 using UnityEngine;
+using UnityEngine.Networking;
 
-// Plays a single background track on loop. (Previously crossfaded three zone tracks by height;
-// now simplified to one continuous loop as requested.)
+// Plays a single background track on loop. The track is a very large (~2.5h, 157MB) mp3 that
+// Unity can't import as an AudioClip, so it lives verbatim in StreamingAssets and is streamed
+// from disk at runtime instead.
 public class MusicManager : MonoBehaviour
 {
-    public AudioClip loopClip;
+    public string streamingFileName = "music_loop.mp3";
     public float volume = 0.4f;
 
     private AudioSource source;
@@ -18,12 +23,33 @@ public class MusicManager : MonoBehaviour
         source.volume = volume;
     }
 
-    void Start()
+    IEnumerator Start()
     {
-        if (loopClip != null)
+        string path = Path.Combine(Application.streamingAssetsPath, streamingFileName);
+        if (!File.Exists(path))
         {
-            source.clip = loopClip;
-            source.Play();
+            Debug.LogWarning("MusicManager: music file not found at " + path);
+            yield break;
         }
+
+        string uri = new Uri(path).AbsoluteUri;   // file:///C:/... form
+        using UnityWebRequest req = UnityWebRequestMultimedia.GetAudioClip(uri, AudioType.MPEG);
+        if (req.downloadHandler is DownloadHandlerAudioClip handler)
+            handler.streamAudio = true;           // stream, don't load the whole file into memory
+
+        yield return req.SendWebRequest();
+
+        if (req.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogWarning("MusicManager: failed to load music - " + req.error);
+            yield break;
+        }
+
+        AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
+        if (clip == null)
+            yield break;
+
+        source.clip = clip;
+        source.Play();
     }
 }

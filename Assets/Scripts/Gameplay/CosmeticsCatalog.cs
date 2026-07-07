@@ -17,6 +17,15 @@ public struct EffectDef
     public int Price;
     public Color ColorA;
     public Color ColorB;
+
+    // Per-effect look so each one is visually distinct (trail shape + particle behaviour).
+    public float TrailWidth;      // 0 = no trail
+    public float TrailTime;       // trail length in seconds
+    public float ParticleRate;    // 0 = no particles
+    public float ParticleSize;
+    public float ParticleSpeed;
+    public float ParticleGravity; // negative = rises, positive = falls
+    public float ParticleLife;
 }
 
 // All prices/colors for the shop live here in one place - purely cosmetic, no gameplay effect.
@@ -38,12 +47,24 @@ public static class CosmeticsCatalog
     public static readonly EffectDef[] Effects =
     {
         new EffectDef { Id = "none", Name = "Kein Effekt", Price = 0 },
-        new EffectDef { Id = "fire", Name = "Feuer-Trail", Price = 50, ColorA = new Color(1f, 0.6f, 0.1f), ColorB = new Color(0.8f, 0.1f, 0f) },
-        new EffectDef { Id = "ice", Name = "Eis-Trail", Price = 50, ColorA = new Color(0.7f, 0.95f, 1f), ColorB = new Color(0.3f, 0.6f, 0.9f) },
-        new EffectDef { Id = "lightning", Name = "Blitz-Trail", Price = 80, ColorA = new Color(1f, 1f, 0.6f), ColorB = new Color(0.9f, 0.9f, 1f) },
-        new EffectDef { Id = "rainbow", Name = "Regenbogen-Trail", Price = 130, ColorA = new Color(1f, 0.3f, 0.3f), ColorB = new Color(0.4f, 0.5f, 1f) },
-        new EffectDef { Id = "stars", Name = "Sternen-Trail", Price = 160, ColorA = new Color(0.9f, 0.9f, 1f), ColorB = new Color(0.4f, 0.3f, 0.8f) },
-        new EffectDef { Id = "galaxy", Name = "Galaxy-Trail", Price = 220, ColorA = new Color(0.6f, 0.2f, 0.9f), ColorB = new Color(0.1f, 0.3f, 0.8f) },
+        // Fire: wide warm trail + fast embers that rise.
+        new EffectDef { Id = "fire", Name = "Feuer", Price = 50, ColorA = new Color(1f, 0.65f, 0.12f), ColorB = new Color(0.85f, 0.12f, 0f),
+            TrailWidth = 0.4f, TrailTime = 0.4f, ParticleRate = 34f, ParticleSize = 0.22f, ParticleSpeed = 1.6f, ParticleGravity = -0.5f, ParticleLife = 0.7f },
+        // Ice: cool trail + slow snow that drifts down.
+        new EffectDef { Id = "ice", Name = "Eis", Price = 50, ColorA = new Color(0.75f, 0.96f, 1f), ColorB = new Color(0.3f, 0.6f, 0.95f),
+            TrailWidth = 0.3f, TrailTime = 0.55f, ParticleRate = 26f, ParticleSize = 0.16f, ParticleSpeed = 0.5f, ParticleGravity = 0.5f, ParticleLife = 1.3f },
+        // Lightning: thin, short, bright trail + fast crackling sparks.
+        new EffectDef { Id = "lightning", Name = "Blitz", Price = 80, ColorA = new Color(1f, 1f, 0.55f), ColorB = new Color(0.75f, 0.85f, 1f),
+            TrailWidth = 0.15f, TrailTime = 0.22f, ParticleRate = 46f, ParticleSize = 0.1f, ParticleSpeed = 3.2f, ParticleGravity = 0f, ParticleLife = 0.35f },
+        // Rainbow: broad trail + big multicolour puffs.
+        new EffectDef { Id = "rainbow", Name = "Regenbogen", Price = 130, ColorA = new Color(1f, 0.25f, 0.3f), ColorB = new Color(0.3f, 0.5f, 1f),
+            TrailWidth = 0.45f, TrailTime = 0.7f, ParticleRate = 22f, ParticleSize = 0.3f, ParticleSpeed = 0.9f, ParticleGravity = 0f, ParticleLife = 1.1f },
+        // Stars: thin trail + sparse slow twinkles.
+        new EffectDef { Id = "stars", Name = "Sterne", Price = 160, ColorA = new Color(1f, 1f, 0.9f), ColorB = new Color(0.6f, 0.4f, 1f),
+            TrailWidth = 0.18f, TrailTime = 0.6f, ParticleRate = 12f, ParticleSize = 0.26f, ParticleSpeed = 0.35f, ParticleGravity = -0.1f, ParticleLife = 1.6f },
+        // Galaxy: deep purple trail + dense swirling dust.
+        new EffectDef { Id = "galaxy", Name = "Galaxy", Price = 220, ColorA = new Color(0.65f, 0.2f, 0.95f), ColorB = new Color(0.15f, 0.35f, 0.9f),
+            TrailWidth = 0.38f, TrailTime = 0.8f, ParticleRate = 40f, ParticleSize = 0.18f, ParticleSpeed = 1.3f, ParticleGravity = 0f, ParticleLife = 1.2f },
     };
 
     public static bool TryGetSkin(string id, out SkinDef skin)

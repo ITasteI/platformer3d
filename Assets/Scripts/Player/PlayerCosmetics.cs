@@ -10,6 +10,7 @@ public class PlayerCosmetics : NetworkBehaviour
     // Wired by SceneBuilder when the prefab is built.
     public Transform characterVisual;
     public TrailRenderer trail;
+    public ParticleSystem effectParticles;
 
     private readonly NetworkVariable<FixedString32Bytes> equippedSkin = new NetworkVariable<FixedString32Bytes>(
         default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
@@ -100,31 +101,54 @@ public class PlayerCosmetics : NetworkBehaviour
 
     void ApplyEffect(string effectId)
     {
-        if (trail == null)
-            return;
+        bool has = CosmeticsCatalog.TryGetEffect(effectId, out EffectDef effect) && effect.Id != "none";
 
-        if (!CosmeticsCatalog.TryGetEffect(effectId, out EffectDef effect) || effect.Id == "none")
+        // Trail
+        if (trail != null)
         {
-            trail.emitting = false;
-            trail.enabled = false;
-            return;
+            if (!has || effect.TrailWidth <= 0f)
+            {
+                trail.emitting = false;
+                trail.enabled = false;
+            }
+            else
+            {
+                trail.enabled = true;
+                trail.emitting = true;
+                trail.time = effect.TrailTime;
+                trail.startWidth = effect.TrailWidth;
+                trail.endWidth = 0f;
+
+                var gradient = new Gradient();
+                gradient.SetKeys(
+                    new[] { new GradientColorKey(effect.ColorA, 0f), new GradientColorKey(effect.ColorB, 1f) },
+                    new[] { new GradientAlphaKey(0.8f, 0f), new GradientAlphaKey(0f, 1f) });
+                trail.colorGradient = gradient;
+            }
         }
 
-        trail.enabled = true;
-        trail.emitting = true;
-
-        var gradient = new Gradient();
-        gradient.SetKeys(
-            new[]
+        // Particles - each effect gets its own colour/size/speed/gravity/rate for a distinct look.
+        if (effectParticles != null)
+        {
+            var emission = effectParticles.emission;
+            if (!has || effect.ParticleRate <= 0f)
             {
-                new GradientColorKey(effect.ColorA, 0f),
-                new GradientColorKey(effect.ColorB, 1f),
-            },
-            new[]
+                emission.rateOverTime = 0f;
+                effectParticles.Clear();
+                effectParticles.Stop();
+            }
+            else
             {
-                new GradientAlphaKey(0.75f, 0f),
-                new GradientAlphaKey(0f, 1f),
-            });
-        trail.colorGradient = gradient;
+                var main = effectParticles.main;
+                main.startColor = new ParticleSystem.MinMaxGradient(effect.ColorA, effect.ColorB);
+                main.startSize = effect.ParticleSize;
+                main.startSpeed = effect.ParticleSpeed;
+                main.startLifetime = effect.ParticleLife;
+                main.gravityModifier = effect.ParticleGravity;
+                emission.rateOverTime = effect.ParticleRate;
+                if (!effectParticles.isPlaying)
+                    effectParticles.Play();
+            }
+        }
     }
 }

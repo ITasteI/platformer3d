@@ -26,5 +26,5 @@ crashlytics-build.properties
 Assets/AssetStoreTools*
 
 # Oversized loop music (157MB) - exceeds GitHub 100MB file limit; ships in the build/release only
-Assets/Audio/Music/music_loop.mp3
-Assets/Audio/Music/music_loop.mp3.meta
+Assets/StreamingAssets/music_loop.mp3
+Assets/StreamingAssets/music_loop.mp3.meta

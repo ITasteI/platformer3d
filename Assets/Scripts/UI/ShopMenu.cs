@@ -8,6 +8,7 @@ public class ShopMenu : MonoBehaviour
     enum Tab { Skins, Effects, Inventory }
     private Tab tab = Tab.Skins;
     private Vector2 scroll;
+    private Vector2 invScroll;
     private string status = "";
 
     void OnGUI()
@@ -106,13 +107,43 @@ public class ShopMenu : MonoBehaviour
         GUI.EndScrollView();
     }
 
+    // Single scroll view over all owned skins + effects, so the whole inventory scrolls as one
+    // list (the old two-nested-scrollviews layout couldn't be scrolled properly).
     void DrawInventory(Rect area)
     {
-        float half = area.height / 2f - 6f;
-        GUI.Label(new Rect(area.x, area.y, 200, 22), "Skins", UITheme.SubtitleStyle);
-        DrawSkinList(new Rect(area.x, area.y + 24, area.width, half - 24), true);
-        GUI.Label(new Rect(area.x, area.y + half + 8, 200, 22), "Effekte", UITheme.SubtitleStyle);
-        DrawEffectList(new Rect(area.x, area.y + half + 32, area.width, half - 24), true);
+        var ownedSkins = new System.Collections.Generic.List<SkinDef>();
+        foreach (var s in CosmeticsCatalog.Skins)
+            if (EconomySystem.IsOwned(s.Id, true)) ownedSkins.Add(s);
+        var ownedEffects = new System.Collections.Generic.List<EffectDef>();
+        foreach (var eff in CosmeticsCatalog.Effects)
+            if (EconomySystem.IsOwned(eff.Id, false)) ownedEffects.Add(eff);
+
+        const float rowH = 62f, headerH = 30f;
+        float contentH = headerH + ownedSkins.Count * rowH + headerH + ownedEffects.Count * rowH + 10f;
+        Rect view = new Rect(0, 0, area.width - 20, Mathf.Max(contentH, area.height));
+
+        invScroll = GUI.BeginScrollView(area, invScroll, view);
+        float y = 0f;
+
+        GUI.Label(new Rect(0, y, 200, 24), "Skins", UITheme.SubtitleStyle);
+        y += headerH;
+        foreach (var s in ownedSkins)
+        {
+            DrawItemRow(new Rect(0, y, view.width, 56), s.Name, s.Price, s.BaseColor, s.HasEmission,
+                s.Id, true, EconomySystem.EquippedSkin);
+            y += rowH;
+        }
+
+        GUI.Label(new Rect(0, y, 200, 24), "Effekte", UITheme.SubtitleStyle);
+        y += headerH;
+        foreach (var eff in ownedEffects)
+        {
+            DrawItemRow(new Rect(0, y, view.width, 56), eff.Name, eff.Price, eff.ColorA, true,
+                eff.Id, false, EconomySystem.EquippedEffect);
+            y += rowH;
+        }
+
+        GUI.EndScrollView();
     }
 
     void DrawItemRow(Rect r, string name, int price, Color swatch, bool emissive, string id, bool isSkin, string equippedId)
