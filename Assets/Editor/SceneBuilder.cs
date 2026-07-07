@@ -1751,19 +1751,21 @@ public static class SceneBuilder
                 }
             }
 
-            if (i % 2 == 0 && !isCheckpoint)
+            if (!isCheckpoint)
             {
-                // Rare coins reward the riskier platform flavors (hazard/moving/floating/timed/
-                // bouncepad) instead of being scattered at random. Legendary coins are a rare,
-                // deliberate reach to the side of an otherwise-safe landing - a small optional
-                // risk, never an impossible jump (jump-safety clamp above is untouched).
+                // A coin on (almost) every platform now, and they respawn ~10s after pickup, so
+                // players can farm cosmetics. Higher tiers still reward the riskier spots:
+                // Rare (5) on risky flavors, Epic (10) at a moderate interval, Legendary (25) as a
+                // rare optional side-reach. Jump-safety clamp above is untouched.
                 CoinType coinType = CoinType.Normal;
                 bool isRiskyFlavor = flavor == 0 || flavor == 2 || flavor == 4 || flavor == 5 || flavor == 6;
-                if (!earlySection && isRiskyFlavor && i % 4 == 0)
+                if (!earlySection && isRiskyFlavor && i % 3 == 0)
                     coinType = CoinType.Rare;
 
                 Vector3 coinOffset = new Vector3(0f, 1.1f, 0f);
-                if (!earlySection && !isRestStop && i % 60 == 30)
+                if (!earlySection && i % 15 == 7)
+                    coinType = CoinType.Epic;
+                if (!earlySection && !isRestStop && i % 40 == 20)
                 {
                     coinType = CoinType.Legendary;
                     coinOffset += perpSide * 1.2f;
@@ -1980,13 +1982,30 @@ public static class SceneBuilder
         GameObject gem = InstantiateKenney(modelName, pos);
         gem.name = "Gem_" + index + "_" + type;
 
-        float scale = type == CoinType.Legendary ? 1.8f : (type == CoinType.Rare ? 1.45f : 1.2f);
+        float scale = type switch
+        {
+            CoinType.Legendary => 1.8f,
+            CoinType.Epic => 1.6f,
+            CoinType.Rare => 1.45f,
+            _ => 1.2f,
+        };
         gem.transform.localScale = Vector3.one * scale;
 
         if (type != CoinType.Normal)
         {
-            Color tint = type == CoinType.Legendary ? new Color(1.3f, 1.05f, 0.25f) : new Color(0.55f, 0.65f, 1.3f);
-            Color emission = type == CoinType.Legendary ? new Color(0.9f, 0.6f, 0.05f) : new Color(0.15f, 0.2f, 0.55f);
+            // Rare = blue, Epic = purple, Legendary = gold.
+            Color tint = type switch
+            {
+                CoinType.Legendary => new Color(1.3f, 1.05f, 0.25f),
+                CoinType.Epic => new Color(0.85f, 0.45f, 1.3f),
+                _ => new Color(0.55f, 0.65f, 1.3f),
+            };
+            Color emission = type switch
+            {
+                CoinType.Legendary => new Color(0.9f, 0.6f, 0.05f),
+                CoinType.Epic => new Color(0.5f, 0.15f, 0.8f),
+                _ => new Color(0.15f, 0.2f, 0.55f),
+            };
 
             foreach (var rend in gem.GetComponentsInChildren<Renderer>())
             {
