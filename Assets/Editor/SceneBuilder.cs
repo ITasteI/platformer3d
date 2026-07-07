@@ -714,13 +714,39 @@ public static class SceneBuilder
         var renderer = character.GetComponentInChildren<SkinnedMeshRenderer>();
         if (renderer != null)
         {
-            var mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            mat.SetFloat("_Smoothness", 0.1f);
-            if (textures.Length > 0 && textures[0] != null)
-                mat.SetTexture("_BaseMap", textures[0]);
-            renderer.sharedMaterial = mat;
+            // Normalize to a sensible height no matter what unit scale the FBX imported at (raw was
+            // badly sized -> giant blob). Measured from the actual world bounds.
+            float h = renderer.bounds.size.y;
+            if (h > 0.0001f)
+                character.transform.localScale = Vector3.one * (1.7f / h);
+
+            // Saved material ASSET (not a runtime material). A runtime `new Material(...)` was being
+            // lost when the player was saved via SaveAsPrefabAsset, so the build showed the pink
+            // "missing shader" material. A real .mat asset persists into the build.
+            renderer.sharedMaterial = GetProtagonistMaterial(textures.Length > 0 ? textures[0] : null);
         }
         return renderer;
+    }
+
+    static Material protagonistMaterialCache;
+    static Material GetProtagonistMaterial(Texture2D defaultTex)
+    {
+        if (protagonistMaterialCache != null)
+            return protagonistMaterialCache;
+
+        const string path = "Assets/ProtagonistMaterial.mat";
+        protagonistMaterialCache = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (protagonistMaterialCache == null)
+        {
+            protagonistMaterialCache = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            AssetDatabase.CreateAsset(protagonistMaterialCache, path);
+        }
+        protagonistMaterialCache.shader = Shader.Find("Universal Render Pipeline/Lit");
+        protagonistMaterialCache.SetFloat("_Smoothness", 0.1f);
+        if (defaultTex != null)
+            protagonistMaterialCache.SetTexture("_BaseMap", defaultTex);
+        EditorUtility.SetDirty(protagonistMaterialCache);
+        return protagonistMaterialCache;
     }
 
     static RuntimeAnimatorController BuildCharacterAnimator(string fbxPath)
