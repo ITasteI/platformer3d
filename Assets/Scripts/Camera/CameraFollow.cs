@@ -2,10 +2,31 @@ using UnityEngine;
 
 public class CameraFollow : MonoBehaviour
 {
+    // Player-configurable look sensitivity, persisted via PlayerPrefs and shared by every camera.
+    // Loaded lazily so it works before any settings menu is opened.
+    const string SensitivityPrefKey = "MouseSensitivity";
+    const float DefaultSensitivity = 3f;
+    static float cachedSensitivity = -1f;
+
+    public static float Sensitivity
+    {
+        get
+        {
+            if (cachedSensitivity < 0f)
+                cachedSensitivity = PlayerPrefs.GetFloat(SensitivityPrefKey, DefaultSensitivity);
+            return cachedSensitivity;
+        }
+    }
+
+    public static void SetSensitivity(float value)
+    {
+        cachedSensitivity = Mathf.Clamp(value, 0.5f, 10f);
+        PlayerPrefs.SetFloat(SensitivityPrefKey, cachedSensitivity);
+    }
+
     public Transform target;
     public float distance = 6f;
     public float height = 2.5f;
-    public float mouseSensitivity = 3f;
     public float pitchMin = -20f;
     public float pitchMax = 60f;
     public float positionSmoothTime = 0.08f;
@@ -36,8 +57,9 @@ public class CameraFollow : MonoBehaviour
         if (MainMenu.IsBlockingGameplay || WinScreen.HasWon || TutorialOverlay.IsVisible)
             return;
 
-        yaw += Input.GetAxis("Mouse X") * mouseSensitivity;
-        pitch -= Input.GetAxis("Mouse Y") * mouseSensitivity;
+        float sens = Sensitivity;
+        yaw += Input.GetAxis("Mouse X") * sens;
+        pitch -= Input.GetAxis("Mouse Y") * sens;
         pitch = Mathf.Clamp(pitch, pitchMin, pitchMax);
     }
 

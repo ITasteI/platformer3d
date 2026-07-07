@@ -54,7 +54,7 @@ public class SettingsMenu : MonoBehaviour
         GUI.color = new Color(1f, 1f, 1f, MainMenu.FadeAlpha);
 
         float w = 380f;
-        float h = 470f;
+        float h = 528f;
         float x = (Screen.width - w) / 2f;
         float y = (Screen.height - h) / 2f;
 
@@ -92,6 +92,13 @@ public class SettingsMenu : MonoBehaviour
             AudioListener.volume = volume;
             PlayerPrefs.SetFloat(VolumePrefKey, volume);
         }
+        curY += 36f;
+
+        GUI.Label(new Rect(x + 20, curY, w - 40, 20), $"Maussensitivität: {CameraFollow.Sensitivity:0.0}", UITheme.LabelStyle);
+        curY += 22f;
+        float newSens = GUI.HorizontalSlider(new Rect(x + 20, curY + 8, w - 40, 20), CameraFollow.Sensitivity, 0.5f, 10f);
+        if (!Mathf.Approximately(newSens, CameraFollow.Sensitivity))
+            CameraFollow.SetSensitivity(newSens);
         curY += 36f;
 
         GUI.Label(new Rect(x + 20, curY, w - 40, 20), "Monitor:", UITheme.LabelStyle);

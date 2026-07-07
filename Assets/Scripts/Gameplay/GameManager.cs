@@ -28,6 +28,23 @@ public class GameManager : MonoBehaviour
     private const float EconomyFlushInterval = 5f;
     private float economyFlushTimer = EconomyFlushInterval;
 
+    // Coin combo: collecting coins in quick succession stacks a multiplier, rewarding a fast,
+    // continuous climb. The chain resets if you go too long without a pickup.
+    private const float ComboWindow = 2.5f;
+    private const int MaxComboMultiplier = 5;
+    public int Combo { get; private set; }
+    private float lastCoinTime = -99f;
+
+    public int ComboMultiplier => Mathf.Clamp(1 + (Combo - 1) / 2, 1, MaxComboMultiplier);
+
+    // Called by a coin on pickup: advances the chain and returns the multiplier to apply.
+    public int RegisterCoinPickup()
+    {
+        Combo = (Time.time - lastCoinTime <= ComboWindow) ? Combo + 1 : 1;
+        lastCoinTime = Time.time;
+        return ComboMultiplier;
+    }
+
     void Awake()
     {
         if (Instance != null && Instance != this)
@@ -61,6 +78,10 @@ public class GameManager : MonoBehaviour
             economyFlushTimer = EconomyFlushInterval;
             EconomySystem.Flush();
         }
+
+        // Expire the combo chain once the window lapses so the HUD indicator clears.
+        if (Combo > 0 && Time.time - lastCoinTime > ComboWindow)
+            Combo = 0;
     }
 
     void OnApplicationQuit() => EconomySystem.Flush();
@@ -146,6 +167,18 @@ public class GameManager : MonoBehaviour
             GUI.color = new Color(UITheme.Gold.r, UITheme.Gold.g, UITheme.Gold.b, a);
             GUI.Label(new Rect(coinRect.xMax - 4, coinRect.y + 6 - age * 30f, 80, 26), "+" + p.amount, popStyle);
             GUI.color = prev;
+        }
+
+        // Combo multiplier badge (only while an actual multiplier is active), to the right of coins.
+        if (ComboMultiplier > 1)
+        {
+            var comboStyle = new GUIStyle(UITheme.CoinStyle) { fontStyle = FontStyle.Bold };
+            comboStyle.normal.textColor = UITheme.Positive;
+            float pulse = 1f + Mathf.Sin(Time.time * 10f) * 0.06f;
+            Matrix4x4 cm = GUI.matrix;
+            GUIUtility.ScaleAroundPivot(new Vector2(pulse, pulse), new Vector2(coinRect.xMax + 40, coinRect.center.y));
+            GUI.Label(new Rect(coinRect.xMax + 12, coinRect.y + 8, 90, 26), $"x{ComboMultiplier} Combo", comboStyle);
+            GUI.matrix = cm;
         }
 
         // Time chip.

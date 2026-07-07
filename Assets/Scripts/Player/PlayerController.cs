@@ -39,9 +39,11 @@ public class PlayerController : NetworkBehaviour
     public float crouchHeight = 1f;
     public float crouchSpeedMultiplier = 0.5f;
 
-    [Header("Fly Ability (Q)")]
+    [Header("Boost Ability (Q)")]
     public float flyDuration = 3f;
-    public float flySpeed = 6f;
+    public float flySpeed = 7f;
+    public float flyAccel = 30f;
+    public float flySinkSpeed = 2f;
     public float baseCooldown = 90f;
     public float cooldownReductionPerShard = 15f;
     public float minCooldown = 20f;
@@ -203,6 +205,8 @@ public class PlayerController : NetworkBehaviour
 
         if (adminFlyEnabled && AdminAuth.IsAdmin)
             HandleAdminFly();
+        else if (isFlying)
+            ApplyFlyMove();
         else
             ApplyGravity();
 
@@ -339,6 +343,7 @@ public class PlayerController : NetworkBehaviour
         {
             isFlying = true;
             flyTimer = flyDuration;
+            velocity.y = Mathf.Max(velocity.y, 0f); // snappy takeoff even if we were falling
             AudioManager.Instance?.PlayWhoosh();
             EffectsManager.Instance?.PlayDust(transform.position);
             int shards = GameManager.Instance != null ? GameManager.Instance.CoinCount : 0;
@@ -348,11 +353,21 @@ public class PlayerController : NetworkBehaviour
         if (isFlying)
         {
             flyTimer -= Time.deltaTime;
-            velocity.y = flySpeed;
             jumpsUsed = 0;
+            // Active boost: hold Space (or keep Q held) to thrust up, release to sink slowly.
+            // Together with full horizontal control this makes it a steerable jetpack burst instead
+            // of a passive auto-rise. ApplyFlyMove moves vertically without gravity while flying.
+            bool thrust = Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.Q);
+            float target = thrust ? flySpeed : -flySinkSpeed;
+            velocity.y = Mathf.MoveTowards(velocity.y, target, flyAccel * Time.deltaTime);
             if (flyTimer <= 0f)
                 isFlying = false;
         }
+    }
+
+    void ApplyFlyMove()
+    {
+        controller.Move(new Vector3(0f, velocity.y * Time.deltaTime, 0f));
     }
 
     void OnGUI()
@@ -362,7 +377,7 @@ public class PlayerController : NetworkBehaviour
 
         UITheme.EnsureInit();
         // Below the GameManager HUD (coin/time/height chips + zone bar occupy y≈16..178).
-        string status = AbilityReady ? "Flug (Q): bereit" : $"Flug (Q): {CooldownRemaining:0}s";
+        string status = AbilityReady ? "Boost (Q): bereit" : $"Boost (Q): {CooldownRemaining:0}s";
         var flyStyle = new GUIStyle(UITheme.LabelStyle) { fontSize = 15, fontStyle = FontStyle.Bold };
         flyStyle.normal.textColor = AbilityReady ? UITheme.Positive : new Color(0.8f, 0.8f, 0.85f);
         GUI.Label(new Rect(22, 188, 300, 24), status, flyStyle);
@@ -396,6 +411,10 @@ public class PlayerController : NetworkBehaviour
         else
         {
             coyoteTimer -= Time.deltaTime;
+            // Walking off a ledge without jumping shouldn't grant a fresh full double-jump. Once the
+            // coyote grace elapses unused, consume the grounded jump so only the air jump remains.
+            if (coyoteTimer <= 0f && jumpsUsed == 0)
+                jumpsUsed = 1;
         }
 
         wasGrounded = controller.isGrounded;

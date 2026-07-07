@@ -87,7 +87,9 @@ public class Coin : MonoBehaviour
         if (player == null || !player.IsOwner)
             return;
 
-        int value = ValueFor(type);
+        // Apply the combo multiplier from a fast pickup chain (x1 when no GameManager / no chain).
+        int multiplier = GameManager.Instance != null ? GameManager.Instance.RegisterCoinPickup() : 1;
+        int value = ValueFor(type) * multiplier;
         GameManager.Instance?.AddCoins(value);
         EconomySystem.AddCoins(value);
         AudioManager.Instance?.PlayCoin();
