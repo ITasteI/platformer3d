@@ -1920,12 +1920,26 @@ public static class SceneBuilder
 
     static void CreateMusicManager()
     {
+        // The loop track is a very large (~2.5h) file, so stream it from disk instead of
+        // decompressing the whole thing into memory.
+        string loopPath = AudioPath + "Music/music_loop.mp3";
+        var audioImporter = AssetImporter.GetAtPath(loopPath) as AudioImporter;
+        if (audioImporter != null)
+        {
+            var settings = audioImporter.defaultSampleSettings;
+            if (settings.loadType != AudioClipLoadType.Streaming)
+            {
+                settings.loadType = AudioClipLoadType.Streaming;
+                settings.compressionFormat = AudioCompressionFormat.Vorbis;
+                settings.preloadAudioData = false;
+                audioImporter.defaultSampleSettings = settings;
+                audioImporter.SaveAndReimport();
+            }
+        }
+
         var go = new GameObject("MusicManager");
         var music = go.AddComponent<MusicManager>();
-        music.topHeight = actualTopHeight;
-        music.lowZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_low.mp3");
-        music.midZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_mid.mp3");
-        music.highZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_high.mp3");
+        music.loopClip = AssetDatabase.LoadAssetAtPath<AudioClip>(loopPath);
     }
 
     static readonly string[] GrassZonePlatforms = { "crate-strong", "crate-item-strong", "platform" };
