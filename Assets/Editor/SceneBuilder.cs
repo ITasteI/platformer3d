@@ -227,6 +227,7 @@ public static class SceneBuilder
         GameObject playerPrefab = CreatePlayerPrefab();
         CreateNetworkManagerAndLobby(playerPrefab, lobbyCam);
         CreateGround();
+        CreateRiverWater();
         CreateMountainRing();
         CreateNatureScatter();
         CreateJunkyardDecor();
@@ -283,8 +284,10 @@ public static class SceneBuilder
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Linear;
         RenderSettings.fogColor = new Color(0.6f, 0.55f, 0.5f);
-        RenderSettings.fogStartDistance = 20f;
-        RenderSettings.fogEndDistance = 80f;
+        // Wide enough that distant mountains (radius 260-420) read as hazy silhouettes with
+        // real color/shading instead of flattening into a solid fog-colored blob.
+        RenderSettings.fogStartDistance = 60f;
+        RenderSettings.fogEndDistance = 480f;
 
         return light;
     }
@@ -510,11 +513,51 @@ public static class SceneBuilder
         return AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
     }
 
+    const float RiverMaxHeight = 10f;
+
+    // A broad arc kept at radius >= 65 so it never crosses the flattened spawn area or
+    // overlaps the tower base. Parameterized by s in [0,1].
+    static Vector3 RiverPoint(float s)
+    {
+        float angle = Mathf.Lerp(-110f, 110f, s) * Mathf.Deg2Rad;
+        float radius = 100f + Mathf.Sin(s * Mathf.PI) * 35f;
+        return new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+    }
+
+    static float DistanceToRiver(float worldX, float worldZ, out float riverS)
+    {
+        float best = float.MaxValue;
+        float bestS = 0f;
+        const int samples = 48;
+        for (int i = 0; i <= samples; i++)
+        {
+            float s = i / (float)samples;
+            Vector3 p = RiverPoint(s);
+            float d = (new Vector2(worldX, worldZ) - new Vector2(p.x, p.z)).magnitude;
+            if (d < best)
+            {
+                best = d;
+                bestS = s;
+            }
+        }
+        riverS = bestS;
+        return best;
+    }
+
+    // Normalized (0..1) heightmap value for the riverbed at progress s along its length -
+    // high upstream, then a sharp drop around s=0.3-0.45 for a waterfall, low downstream.
+    static float RiverBedNormalizedHeight(float s)
+    {
+        return Mathf.Lerp(0.35f, 0.03f, Mathf.Clamp01((s - 0.3f) / 0.15f));
+    }
+
+    const float WaterfallS = 0.37f;
+
     static void CreateGround()
     {
         const int resolution = 129;
         const float size = 300f;
-        const float maxHeight = 10f;
+        const float maxHeight = RiverMaxHeight;
 
         TerrainData terrainData = new TerrainData();
         terrainData.heightmapResolution = resolution;
@@ -536,7 +579,15 @@ public static class SceneBuilder
 
                 float noise = Mathf.PerlinNoise(x * 0.045f + offsetX, z * 0.045f + offsetZ);
                 float noise2 = Mathf.PerlinNoise(x * 0.12f + offsetX, z * 0.12f + offsetZ) * 0.3f;
-                heights[z, x] = (noise * 0.7f + noise2) * flatten * 0.55f;
+                float h = (noise * 0.7f + noise2) * flatten * 0.55f;
+
+                float distToRiver = DistanceToRiver(worldX, worldZ, out float riverS);
+                const float riverHalfWidth = 5f;
+                const float riverBankWidth = 9f;
+                float riverCarve = 1f - Mathf.Clamp01((distToRiver - riverHalfWidth) / riverBankWidth);
+                h = Mathf.Lerp(h, RiverBedNormalizedHeight(riverS), riverCarve);
+
+                heights[z, x] = h;
             }
         }
         terrainData.SetHeights(0, 0, heights);
@@ -565,6 +616,123 @@ public static class SceneBuilder
         if (groundTerrain == null)
             return 0f;
         return groundTerrain.SampleHeight(worldPos);
+    }
+
+    static Material waterMaterial;
+
+    static Material GetWaterMaterial()
+    {
+        if (waterMaterial != null)
+            return waterMaterial;
+
+        waterMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        waterMaterial.SetColor("_BaseColor", new Color(0.22f, 0.5f, 0.62f, 0.6f));
+        waterMaterial.SetFloat("_Smoothness", 0.85f);
+        waterMaterial.SetFloat("_Surface", 1f);
+        waterMaterial.SetFloat("_Blend", 0f);
+        waterMaterial.SetOverrideTag("RenderType", "Transparent");
+        waterMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        waterMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        waterMaterial.SetInt("_ZWrite", 0);
+        waterMaterial.DisableKeyword("_SURFACE_TYPE_OPAQUE");
+        waterMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        waterMaterial.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        return waterMaterial;
+    }
+
+    static Mesh BuildRiverRibbonMesh(int steps, float width)
+    {
+        Vector3[] vertices = new Vector3[(steps + 1) * 2];
+        Vector2[] uvs = new Vector2[vertices.Length];
+        int[] triangles = new int[steps * 6];
+
+        for (int i = 0; i <= steps; i++)
+        {
+            float s = i / (float)steps;
+            Vector3 p = RiverPoint(s);
+            Vector3 pNext = RiverPoint(Mathf.Min(1f, s + 0.01f));
+            Vector3 tangent = (pNext - p).normalized;
+            Vector3 side = new Vector3(-tangent.z, 0f, tangent.x) * (width * 0.5f);
+            float y = RiverBedNormalizedHeight(s) * RiverMaxHeight + 0.12f;
+
+            vertices[i * 2] = new Vector3(p.x - side.x, y, p.z - side.z);
+            vertices[i * 2 + 1] = new Vector3(p.x + side.x, y, p.z + side.z);
+            uvs[i * 2] = new Vector2(0f, s * steps * 0.3f);
+            uvs[i * 2 + 1] = new Vector2(1f, s * steps * 0.3f);
+
+            if (i < steps)
+            {
+                int b = i * 2;
+                triangles[i * 6 + 0] = b;
+                triangles[i * 6 + 1] = b + 2;
+                triangles[i * 6 + 2] = b + 1;
+                triangles[i * 6 + 3] = b + 1;
+                triangles[i * 6 + 4] = b + 2;
+                triangles[i * 6 + 5] = b + 3;
+            }
+        }
+
+        Mesh mesh = new Mesh();
+        mesh.vertices = vertices;
+        mesh.uv = uvs;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    static void CreateRiverWater()
+    {
+        GameObject river = new GameObject("River");
+        var filter = river.AddComponent<MeshFilter>();
+        filter.sharedMesh = BuildRiverRibbonMesh(60, 9f);
+        var renderer = river.AddComponent<MeshRenderer>();
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.sharedMaterial = GetWaterMaterial();
+        river.isStatic = true;
+
+        // Waterfall: a vertical water sheet spanning the height drop, plus a light mist puff.
+        Vector3 topPoint = RiverPoint(WaterfallS - 0.03f);
+        Vector3 bottomPoint = RiverPoint(WaterfallS + 0.05f);
+        float topY = RiverBedNormalizedHeight(WaterfallS - 0.03f) * RiverMaxHeight + 0.3f;
+        float bottomY = RiverBedNormalizedHeight(WaterfallS + 0.05f) * RiverMaxHeight + 0.1f;
+        float dropHeight = Mathf.Max(0.5f, topY - bottomY);
+
+        GameObject fall = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        fall.name = "Waterfall";
+        Object.DestroyImmediate(fall.GetComponent<Collider>());
+        Vector3 mid = (topPoint + bottomPoint) * 0.5f;
+        fall.transform.position = new Vector3(mid.x, (topY + bottomY) * 0.5f, mid.z);
+        Vector3 flowDir = (bottomPoint - topPoint);
+        flowDir.y = bottomY - topY;
+        fall.transform.rotation = Quaternion.LookRotation(new Vector3(flowDir.z, 0f, -flowDir.x).normalized) * Quaternion.Euler(90f, 0f, 0f);
+        fall.transform.localScale = new Vector3(7f, dropHeight, 1f);
+        fall.GetComponent<Renderer>().sharedMaterial = GetWaterMaterial();
+
+        GameObject mist = new GameObject("WaterfallMist");
+        mist.transform.position = new Vector3(bottomPoint.x, bottomY + 0.3f, bottomPoint.z);
+        var ps = mist.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.loop = true;
+        main.startLifetime = 1.2f;
+        main.startSpeed = 0.6f;
+        main.startSize = 0.5f;
+        main.startColor = new Color(1f, 1f, 1f, 0.5f);
+        main.maxParticles = 60;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        var emission = ps.emission;
+        emission.rateOverTime = 20f;
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.scale = new Vector3(3f, 0.3f, 1f);
+        var pRenderer = mist.GetComponent<ParticleSystemRenderer>();
+        Shader particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (particleShader == null)
+            particleShader = Shader.Find("Universal Render Pipeline/Unlit");
+        var mistMat = new Material(particleShader);
+        if (mistMat.HasProperty("_BaseColor"))
+            mistMat.SetColor("_BaseColor", Color.white);
+        pRenderer.material = mistMat;
     }
 
     static readonly string[] MeadowTrees = { "tree_default", "tree_oak", "tree_pineRoundA", "tree_pineTallA", "tree_small", "tree_fat" };
@@ -604,7 +772,9 @@ public static class SceneBuilder
         }
     }
 
-    static Mesh BuildConeMesh(float radius, float height, int segments)
+    // A jagged peak instead of a perfect cone: the apex ring wobbles per-vertex so the
+    // silhouette reads as a rocky ridge rather than a smooth pyramid.
+    static Mesh BuildJaggedPeakMesh(float radius, float height, int segments, float seed)
     {
         Mesh mesh = new Mesh();
         Vector3[] vertices = new Vector3[segments + 2];
@@ -612,9 +782,11 @@ public static class SceneBuilder
         for (int i = 0; i < segments; i++)
         {
             float a = (i / (float)segments) * Mathf.PI * 2f;
-            vertices[i + 1] = new Vector3(Mathf.Cos(a) * radius, 0f, Mathf.Sin(a) * radius);
+            float r = radius * (0.85f + HashFloat(seed + i * 1.7f) * 0.3f);
+            vertices[i + 1] = new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
         }
-        vertices[segments + 1] = new Vector3(0f, height, 0f);
+        float apexJitter = (HashFloat(seed + 40f) - 0.5f) * radius * 0.3f;
+        vertices[segments + 1] = new Vector3(apexJitter, height, apexJitter * 0.6f);
 
         int[] triangles = new int[segments * 3 * 2];
         int t = 0;
@@ -640,37 +812,81 @@ public static class SceneBuilder
         return mesh;
     }
 
+    static Material rockMaterial;
+    static Material snowCapMaterial;
+
+    static Material GetRockMaterial()
+    {
+        if (rockMaterial != null)
+            return rockMaterial;
+        rockMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        rockMaterial.SetColor("_BaseColor", new Color(0.34f, 0.36f, 0.42f));
+        rockMaterial.SetFloat("_Smoothness", 0.05f);
+        rockMaterial.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+        return rockMaterial;
+    }
+
+    static Material GetSnowCapMaterial()
+    {
+        if (snowCapMaterial != null)
+            return snowCapMaterial;
+        snowCapMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        snowCapMaterial.SetColor("_BaseColor", new Color(0.93f, 0.95f, 0.98f));
+        snowCapMaterial.SetFloat("_Smoothness", 0.1f);
+        snowCapMaterial.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+        return snowCapMaterial;
+    }
+
     static void CreateMountainRing()
     {
         Random.InitState(2024);
         GameObject root = new GameObject("MountainRange");
-        int count = 26;
+        int count = 30;
 
         for (int i = 0; i < count; i++)
         {
-            float angle = (i / (float)count) * Mathf.PI * 2f + Random.Range(-0.15f, 0.15f);
-            float radius = Random.Range(260f, 420f);
-            float height = Random.Range(70f, 190f);
-            float baseRadius = Random.Range(35f, 70f);
+            float angle = (i / (float)count) * Mathf.PI * 2f + Random.Range(-0.12f, 0.12f);
+            float radius = Random.Range(260f, 440f);
+            float height = Random.Range(90f, 220f);
+            float baseRadius = Random.Range(40f, 80f);
             Vector3 pos = new Vector3(Mathf.Sin(angle) * radius, -10f, Mathf.Cos(angle) * radius);
 
             GameObject mountain = new GameObject("Mountain_" + i);
             mountain.transform.SetParent(root.transform);
             mountain.transform.position = pos;
-
-            MeshFilter mf = mountain.AddComponent<MeshFilter>();
-            mf.sharedMesh = BuildConeMesh(baseRadius, height, 9);
-            MeshRenderer mr = mountain.AddComponent<MeshRenderer>();
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-            float shade = Random.Range(0.35f, 0.6f);
-            Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            mat.SetColor("_BaseColor", new Color(Mathf.Clamp01(shade * 0.75f), Mathf.Clamp01(shade * 0.8f), Mathf.Clamp01(shade * 1.05f)));
-            mat.SetFloat("_Smoothness", 0.05f);
-            mat.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
-            mr.sharedMaterial = mat;
-
             mountain.isStatic = true;
+
+            // Two overlapping jagged cones per peak read as a small ridge instead of a lone
+            // symmetric pyramid, and give each mountain a secondary shoulder peak.
+            GameObject main = new GameObject("Rock");
+            main.transform.SetParent(mountain.transform);
+            main.transform.localPosition = Vector3.zero;
+            var mainFilter = main.AddComponent<MeshFilter>();
+            mainFilter.sharedMesh = BuildJaggedPeakMesh(baseRadius, height, 10, i * 13.1f);
+            var mainRenderer = main.AddComponent<MeshRenderer>();
+            mainRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mainRenderer.sharedMaterial = GetRockMaterial();
+
+            GameObject shoulder = new GameObject("Shoulder");
+            shoulder.transform.SetParent(mountain.transform);
+            float shoulderAngle = Random.Range(0f, Mathf.PI * 2f);
+            shoulder.transform.localPosition = new Vector3(Mathf.Sin(shoulderAngle) * baseRadius * 0.7f, 0f, Mathf.Cos(shoulderAngle) * baseRadius * 0.7f);
+            var shoulderFilter = shoulder.AddComponent<MeshFilter>();
+            shoulderFilter.sharedMesh = BuildJaggedPeakMesh(baseRadius * 0.6f, height * Random.Range(0.55f, 0.8f), 8, i * 13.1f + 90f);
+            var shoulderRenderer = shoulder.AddComponent<MeshRenderer>();
+            shoulderRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            shoulderRenderer.sharedMaterial = GetRockMaterial();
+
+            // Snow cap: a small white cone nested at the very top of the main peak.
+            float snowHeight = height * Random.Range(0.22f, 0.32f);
+            GameObject snow = new GameObject("SnowCap");
+            snow.transform.SetParent(mountain.transform);
+            snow.transform.localPosition = new Vector3(0f, height - snowHeight * 1.6f, 0f);
+            var snowFilter = snow.AddComponent<MeshFilter>();
+            snowFilter.sharedMesh = BuildJaggedPeakMesh(baseRadius * 0.42f, snowHeight * 2f, 8, i * 13.1f + 200f);
+            var snowRenderer = snow.AddComponent<MeshRenderer>();
+            snowRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            snowRenderer.sharedMaterial = GetSnowCapMaterial();
         }
     }
 
@@ -1093,9 +1309,9 @@ public static class SceneBuilder
         music.highZoneClip = AssetDatabase.LoadAssetAtPath<AudioClip>(AudioPath + "Music/music_high.mp3");
     }
 
-    static readonly string[] GrassZonePlatforms = { "crate-strong", "crate-item-strong", "pipe", "platform" };
-    static readonly string[] VolcanoZonePlatforms = { "platform-fortified", "brick", "pipe", "platform" };
-    static readonly string[] CloudZonePlatforms = { "platform-overhang", "platform-ramp", "pipe" };
+    static readonly string[] GrassZonePlatforms = { "crate-strong", "crate-item-strong", "platform" };
+    static readonly string[] VolcanoZonePlatforms = { "platform-fortified", "brick", "platform" };
+    static readonly string[] CloudZonePlatforms = { "platform-overhang", "platform-ramp" };
     static readonly string[] IceZonePlatforms = { "platform-fortified", "platform-overhang", "brick" };
     static readonly string[] FinalZonePlatforms = { "platform-fortified", "platform-overhang", "platform-ramp" };
 
@@ -1108,15 +1324,15 @@ public static class SceneBuilder
         return FinalZonePlatforms;
     }
 
+    // Colorful Kenney platform props (shared candy-colored texture atlas) instead of plain
+    // concrete - keeps the climb feeling cheerful rather than grey and monolithic.
     static GameObject BuildPlatformShape(int shapeType, int index, float sizeMultiplier, float t)
     {
         string[] pool = GetZonePlatformPool(t);
         string modelName = pool[shapeType % pool.Length];
 
         GameObject platform = InstantiateKenney(modelName, Vector3.zero);
-        platform.transform.localScale = Vector3.one * sizeMultiplier * (modelName == "pipe" ? 1.4f : 1.5f);
-        if (modelName == "pipe")
-            platform.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
+        platform.transform.localScale = Vector3.one * sizeMultiplier * 1.5f;
 
         platform.name = "Platform_" + index;
         AddSolidCollider(platform);
