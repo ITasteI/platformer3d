@@ -31,7 +31,7 @@ public class GameManager : MonoBehaviour
     // Coin combo: collecting coins in quick succession stacks a multiplier, rewarding a fast,
     // continuous climb. The chain resets if you go too long without a pickup.
     private const float ComboWindow = 2.5f;
-    private const int MaxComboMultiplier = 5;
+    private const int MaxComboMultiplier = 3;
     public int Combo { get; private set; }
     private float lastCoinTime = -99f;
 

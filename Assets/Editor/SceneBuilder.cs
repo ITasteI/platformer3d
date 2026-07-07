@@ -423,9 +423,8 @@ public static class SceneBuilder
 
         var playerController = root.AddComponent<PlayerController>();
 
-        // Character visual: a parent holding every skin's character model (they share one Kenney rig,
-        // so one animator controller drives all of them). Only one is active at a time; PlayerCosmetics
-        // toggles them per equipped skin. Squash on the parent scales whichever model is active.
+        // Character visual: one humanoid Kenney "Animated Characters Protagonists" mesh. Each skin is
+        // a whole different CHARACTER via its texture; PlayerCosmetics swaps the texture per skin.
         GameObject visualRoot = new GameObject("CharacterVisual");
         visualRoot.transform.SetParent(root.transform);
         visualRoot.transform.localPosition = Vector3.zero;
@@ -434,32 +433,7 @@ public static class SceneBuilder
         var squash = visualRoot.AddComponent<CharacterSquash>();
         squash.player = playerController;
 
-        RuntimeAnimatorController charController = BuildCharacterAnimator(KitPath + "character-oobi.fbx");
-
-        // Distinct character models the skin catalog references (oobi first = default base).
-        var modelNames = new System.Collections.Generic.List<string> { "character-oobi" };
-        foreach (var sk in CosmeticsCatalog.Skins)
-            if (!string.IsNullOrEmpty(sk.Model) && !modelNames.Contains(sk.Model))
-                modelNames.Add(sk.Model);
-
-        var modelObjects = new GameObject[modelNames.Count];
-        Animator animator = null;
-        for (int mi = 0; mi < modelNames.Count; mi++)
-        {
-            GameObject charGO = InstantiateKenney(modelNames[mi], Vector3.zero);
-            charGO.name = modelNames[mi];
-            charGO.transform.SetParent(visualRoot.transform);
-            charGO.transform.localPosition = Vector3.zero;
-            charGO.transform.localRotation = Quaternion.identity;
-
-            var a = charGO.AddComponent<Animator>();
-            a.runtimeAnimatorController = charController;
-            charGO.SetActive(mi == 0);
-
-            modelObjects[mi] = charGO;
-            if (mi == 0)
-                animator = a;
-        }
+        SkinnedMeshRenderer characterRenderer = BuildProtagonistCharacter(visualRoot.transform, out Animator animator, out Texture2D[] skinTextures);
         playerController.animator = animator;
 
         var admin = root.AddComponent<AdminController>();
@@ -542,8 +516,9 @@ public static class SceneBuilder
         aura.Stop();
 
         var cosmetics = root.AddComponent<PlayerCosmetics>();
-        cosmetics.modelObjects = modelObjects;
-        cosmetics.modelIds = modelNames.ToArray();
+        cosmetics.characterRenderer = characterRenderer;
+        cosmetics.skinTextures = skinTextures;
+        cosmetics.skinTextureIds = SkinTextureNames;
         cosmetics.playerController = playerController;
         cosmetics.trail = trail;
         cosmetics.effectParticles = fx;
@@ -627,6 +602,125 @@ public static class SceneBuilder
         var lobby = nmGO.AddComponent<LobbyBootstrap>();
         lobby.lobbyCamera = lobbyCam;
         lobby.transport = transport;
+    }
+
+    const string ProtagonistPath = "Assets/KenneyProtagonists/";
+
+    // Ensures the named clips inside an animation FBX loop (Kenney's idle/run import as one-shot).
+    static void EnsureClipLoops(string fbxPath, params string[] clipNames)
+    {
+        var importer = AssetImporter.GetAtPath(fbxPath) as ModelImporter;
+        if (importer == null)
+            return;
+        var clips = importer.clipAnimations;
+        if (clips == null || clips.Length == 0)
+            clips = importer.defaultClipAnimations;
+
+        bool changed = false;
+        for (int i = 0; i < clips.Length; i++)
+        {
+            foreach (var name in clipNames)
+                if (clips[i].name == name && !clips[i].loopTime)
+                {
+                    clips[i].loopTime = true;
+                    changed = true;
+                }
+        }
+        if (changed)
+        {
+            importer.clipAnimations = clips;
+            importer.SaveAndReimport();
+        }
+    }
+
+    // Animator for the Kenney "Animated Characters Protagonists" humanoid, built from its own
+    // idle/run/jump clips (same rig, so no T-pose risk). Driven by the existing PlayerController
+    // params (Speed/Grounded/VerticalVelocity), so movement/MP sync is unchanged.
+    static RuntimeAnimatorController BuildProtagonistAnimator()
+    {
+        EnsureClipLoops(ProtagonistPath + "Animations/idle.fbx", "Root|Idle");
+        EnsureClipLoops(ProtagonistPath + "Animations/run.fbx", "Root|Run");
+
+        const string controllerPath = "Assets/ProtagonistAnimator.controller";
+        if (AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath) != null)
+            AssetDatabase.DeleteAsset(controllerPath);
+        AnimatorController controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
+
+        AnimationClip Load(string file, string clipName)
+        {
+            foreach (var a in AssetDatabase.LoadAllAssetsAtPath(ProtagonistPath + "Animations/" + file))
+                if (a is AnimationClip c && c.name == clipName)
+                    return c;
+            return null;
+        }
+        AnimationClip idle = Load("idle.fbx", "Root|Idle");
+        AnimationClip run = Load("run.fbx", "Root|Run");
+        AnimationClip jump = Load("jump.fbx", "Root|Jump");
+
+        controller.AddParameter("Speed", AnimatorControllerParameterType.Float);
+        controller.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
+        controller.AddParameter("Crouching", AnimatorControllerParameterType.Bool);
+        controller.AddParameter("VerticalVelocity", AnimatorControllerParameterType.Float);
+
+        var sm = controller.layers[0].stateMachine;
+        var idleState = sm.AddState("Idle"); idleState.motion = idle;
+        var runState = sm.AddState("Run"); runState.motion = run;
+        var jumpState = sm.AddState("Jump"); jumpState.motion = jump;
+        sm.defaultState = idleState;
+
+        AnimatorStateTransition T(AnimatorState to)
+        {
+            var t = sm.AddAnyStateTransition(to);
+            t.hasExitTime = false;
+            t.duration = 0.12f;
+            t.canTransitionToSelf = false;
+            return t;
+        }
+        var toJump = T(jumpState); toJump.AddCondition(AnimatorConditionMode.IfNot, 0f, "Grounded");
+        var toRun = T(runState); toRun.AddCondition(AnimatorConditionMode.If, 0f, "Grounded"); toRun.AddCondition(AnimatorConditionMode.Greater, 0.1f, "Speed");
+        var toIdle = T(idleState); toIdle.AddCondition(AnimatorConditionMode.If, 0f, "Grounded"); toIdle.AddCondition(AnimatorConditionMode.Less, 0.1f, "Speed");
+
+        return controller;
+    }
+
+    // Skin textures = the different character looks (parallel to CosmeticsCatalog skin.Texture ids).
+    static readonly string[] SkinTextureNames = { "skaterMaleA", "skaterFemaleA", "criminalMaleA", "cyborgFemaleA" };
+    static RuntimeAnimatorController protagonistAnimatorCache;
+
+    // Instantiates the humanoid protagonist under 'parent' with the shared animator and a material
+    // set to the default skin texture; returns its renderer + all skin textures for the cosmetics.
+    static SkinnedMeshRenderer BuildProtagonistCharacter(Transform parent, out Animator animator, out Texture2D[] textures)
+    {
+        if (protagonistAnimatorCache == null)
+            protagonistAnimatorCache = BuildProtagonistAnimator();
+
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(ProtagonistPath + "Model/characterMedium.fbx");
+        GameObject character = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+        character.name = "Character";
+        character.transform.SetParent(parent);
+        character.transform.localPosition = Vector3.zero;
+        character.transform.localRotation = Quaternion.identity;
+        character.transform.localScale = Vector3.one;
+
+        animator = character.GetComponent<Animator>();
+        if (animator == null)
+            animator = character.AddComponent<Animator>();
+        animator.runtimeAnimatorController = protagonistAnimatorCache;
+
+        textures = new Texture2D[SkinTextureNames.Length];
+        for (int i = 0; i < SkinTextureNames.Length; i++)
+            textures[i] = AssetDatabase.LoadAssetAtPath<Texture2D>(ProtagonistPath + "Skins/" + SkinTextureNames[i] + ".png");
+
+        var renderer = character.GetComponentInChildren<SkinnedMeshRenderer>();
+        if (renderer != null)
+        {
+            var mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            mat.SetFloat("_Smoothness", 0.1f);
+            if (textures.Length > 0 && textures[0] != null)
+                mat.SetTexture("_BaseMap", textures[0]);
+            renderer.sharedMaterial = mat;
+        }
+        return renderer;
     }
 
     static RuntimeAnimatorController BuildCharacterAnimator(string fbxPath)
@@ -1961,7 +2055,9 @@ public static class SceneBuilder
                     coinOffset += perpSide * 1.2f;
                 }
 
-                CreateGem(pos + coinOffset, i, coinType);
+                // Fewer coins so earning takes longer (early section keeps coins for onboarding).
+                if (earlySection || i % 2 == 0)
+                    CreateGem(pos + coinOffset, i, coinType);
 
                 // Crash-style item crate on some platforms: an extra reward you smash, placed to the
                 // side as a small optional reach (jump-safety of the main path is untouched).
@@ -2096,13 +2192,7 @@ public static class SceneBuilder
         rootGO.transform.position = origin;
         var preview = rootGO.AddComponent<CosmeticPreview>();
 
-        GameObject visual = InstantiateKenney("character-oobi", origin);
-        visual.name = "PreviewCharacter";
-        visual.transform.SetParent(rootGO.transform);
-        visual.transform.localPosition = Vector3.zero;
-        visual.transform.localRotation = Quaternion.identity;
-        var animator = visual.AddComponent<Animator>();
-        animator.runtimeAnimatorController = BuildCharacterAnimator(KitPath + "character-oobi.fbx");
+        SkinnedMeshRenderer previewRenderer = BuildProtagonistCharacter(rootGO.transform, out Animator previewAnimator, out Texture2D[] previewTextures);
 
         // Trail offset from the spin axis so pure rotation traces a visible ring.
         GameObject trailGO = new GameObject("PreviewTrail");
@@ -2148,6 +2238,22 @@ public static class SceneBuilder
         fxRenderer.material = fxMat;
         fx.Stop();
 
+        // Preview aura (so themed skins show their aura in the shop too).
+        GameObject pAuraGO = new GameObject("PreviewAura");
+        pAuraGO.transform.SetParent(rootGO.transform);
+        pAuraGO.transform.localPosition = new Vector3(0f, 0.9f, 0f);
+        var pAura = pAuraGO.AddComponent<ParticleSystem>();
+        var pAuraMain = pAura.main;
+        pAuraMain.loop = true;
+        pAuraMain.playOnAwake = false;
+        pAuraMain.simulationSpace = ParticleSystemSimulationSpace.Local;
+        pAuraMain.maxParticles = 300;
+        var pAuraEmission = pAura.emission;
+        pAuraEmission.rateOverTime = 0f;
+        var pAuraRenderer = pAuraGO.GetComponent<ParticleSystemRenderer>();
+        pAuraRenderer.material = new Material(fxShader);
+        pAura.Stop();
+
         SetLayerRecursive(rootGO, PreviewLayer);
 
         // Dedicated camera renders ONLY the preview layer into the RenderTexture (set at runtime).
@@ -2174,7 +2280,10 @@ public static class SceneBuilder
 
         preview.trail = trail;
         preview.effectParticles = fx;
+        preview.skinAura = pAura;
         preview.previewCamera = cam;
+        preview.skinTextures = previewTextures;
+        preview.skinTextureIds = SkinTextureNames;
     }
 
     static void CreateEffectsManager()

@@ -10,9 +10,9 @@ class EconomyData
 {
     public int coins;
     public int totalCoinsEarned;
-    public List<string> ownedSkins = new List<string> { "standard" };
+    public List<string> ownedSkins = new List<string> { "adventurer" };
     public List<string> ownedEffects = new List<string> { "none" };
-    public string equippedSkin = "standard";
+    public string equippedSkin = "adventurer";
     public string equippedEffect = "none";
 }
 

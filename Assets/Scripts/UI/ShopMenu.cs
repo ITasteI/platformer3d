@@ -147,7 +147,7 @@ public class ShopMenu : MonoBehaviour
         {
             if (ownedOnly && !EconomySystem.IsOwned(s.Id, true))
                 continue;
-            DrawItemRow(new Rect(0, row, view.width, 56), s.Name, s.Price, s.BaseColor, s.HasEmission,
+            DrawItemRow(new Rect(0, row, view.width, 56), s.Name, s.Price, new Color(0.55f, 0.6f, 0.72f), false,
                 s.Id, true, EconomySystem.EquippedSkin);
             row += 62f;
         }
@@ -197,7 +197,7 @@ public class ShopMenu : MonoBehaviour
         y += headerH;
         foreach (var s in ownedSkins)
         {
-            DrawItemRow(new Rect(0, y, view.width, 56), s.Name, s.Price, s.BaseColor, s.HasEmission,
+            DrawItemRow(new Rect(0, y, view.width, 56), s.Name, s.Price, new Color(0.55f, 0.6f, 0.72f), false,
                 s.Id, true, EconomySystem.EquippedSkin);
             y += rowH;
         }

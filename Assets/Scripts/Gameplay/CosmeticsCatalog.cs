@@ -1,20 +1,20 @@
 using UnityEngine;
 
+// A "skin" is a whole different CHARACTER look on the shared Kenney humanoid: its own texture
+// (skaterMale, cyborg, ...) plus an optional tint and themed aura. Unlocked with coins.
 public struct SkinDef
 {
     public string Id;
     public string Name;
     public int Price;
-    public Color BaseColor;
-    public bool HasEmission;
-    public Color EmissionColor;
 
-    // Which Kenney character mesh this skin uses (they share one rig, so the animator works on all).
-    // Empty/null = the default base character. Lets skins be genuinely different shapes, not recolors.
-    public string Model;
+    // Kenney protagonist skin texture (PNG name under KenneyProtagonists/Skins) = the character look.
+    public string Texture;
 
-    // Themed particle aura that surrounds the character while this skin is worn, giving each skin
-    // its own identity beyond colour: "fire", "ice", "lightning", "nature", "shadow" (empty = none).
+    // Optional multiply tint on the texture (default/zero-alpha = untinted).
+    public Color Tint;
+
+    // Optional themed particle aura: "fire", "ice", "lightning", "nature", "shadow" (empty = none).
     public string AuraTheme;
 }
 
@@ -48,18 +48,12 @@ public static class CosmeticsCatalog
 {
     public static readonly SkinDef[] Skins =
     {
-        new SkinDef { Id = "standard", Name = "Standard", Price = 0, BaseColor = Color.white, HasEmission = false, Model = "character-oobi" },
-        // Basic recolors of the base character - matte, no glow.
-        new SkinDef { Id = "green", Name = "Grün", Price = 40, BaseColor = new Color(0.25f, 0.75f, 0.3f), HasEmission = false, Model = "character-oobi" },
-        new SkinDef { Id = "blue", Name = "Blau", Price = 40, BaseColor = new Color(0.25f, 0.5f, 0.95f), HasEmission = false, Model = "character-oobi" },
-        new SkinDef { Id = "red", Name = "Rot", Price = 40, BaseColor = new Color(0.85f, 0.25f, 0.25f), HasEmission = false, Model = "character-oobi" },
-        // Themed premium skins - each a DIFFERENT character, glowing emission AND its own particle
-        // aura (fire/ice/lightning/nature/shadow), so it reads as a complete identity, not a recolor.
-        new SkinDef { Id = "fire", Name = "Feuer", Price = 150, BaseColor = new Color(0.6f, 0.14f, 0.04f), HasEmission = true, EmissionColor = new Color(2.4f, 0.55f, 0.06f), Model = "character-oodi", AuraTheme = "fire" },
-        new SkinDef { Id = "ice", Name = "Eis", Price = 200, BaseColor = new Color(0.55f, 0.82f, 0.96f), HasEmission = true, EmissionColor = new Color(0.4f, 0.82f, 1.3f), Model = "character-ooli", AuraTheme = "ice" },
-        new SkinDef { Id = "lightning", Name = "Blitz", Price = 300, BaseColor = new Color(0.9f, 0.85f, 0.3f), HasEmission = true, EmissionColor = new Color(1.7f, 1.5f, 0.35f), Model = "character-oozi", AuraTheme = "lightning" },
-        new SkinDef { Id = "nature", Name = "Natur", Price = 400, BaseColor = new Color(0.22f, 0.6f, 0.22f), HasEmission = false, Model = "character-oopi", AuraTheme = "nature" },
-        new SkinDef { Id = "shadow", Name = "Schatten", Price = 600, BaseColor = new Color(0.08f, 0.06f, 0.12f), HasEmission = true, EmissionColor = new Color(0.4f, 0.1f, 0.7f), Model = "character-oobi", AuraTheme = "shadow" },
+        // Real, distinct humanoid characters (Kenney "Animated Characters Protagonists"), unlocked
+        // with coins. Each is a different look, not a recolor. Premium ones add a themed aura.
+        new SkinDef { Id = "adventurer", Name = "Abenteurer", Price = 0, Texture = "skaterMaleA" },
+        new SkinDef { Id = "explorer", Name = "Entdeckerin", Price = 150, Texture = "skaterFemaleA" },
+        new SkinDef { Id = "rogue", Name = "Schurke", Price = 400, Texture = "criminalMaleA", AuraTheme = "shadow" },
+        new SkinDef { Id = "cyborg", Name = "Cyborg", Price = 800, Texture = "cyborgFemaleA", AuraTheme = "lightning" },
     };
 
     public static readonly EffectDef[] Effects =

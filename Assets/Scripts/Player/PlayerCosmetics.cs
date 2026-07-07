@@ -2,21 +2,19 @@ using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
-// Networked cosmetic state for a player: equipped skin (which character model + recolor) and effect
-// (trail + particles). Owner writes from EconomySystem; everyone reads and applies, so remote players
-// see each other's cosmetics. Purely visual - never touches gameplay values.
-//
-// Skins can be genuinely different character MESHES: the prefab holds every referenced Kenney model
-// (they share one rig, so a single animator controller drives all of them). Only one is active at a
-// time; the animator reference on the PlayerController is retargeted to the active model.
+// Networked cosmetic state for a player. The base character is one humanoid Kenney mesh; each
+// "skin" is a whole different character LOOK via its own texture (skaterMale, cyborg, ...), plus an
+// optional themed aura. Effects (trail + particles) are a separate slot. Owner writes from the shop;
+// everyone reads and applies, so remote players see each other's cosmetics. Purely visual.
 public class PlayerCosmetics : NetworkBehaviour
 {
-    // Wired by SceneBuilder. Parallel arrays: character model object + its Kenney mesh id.
-    public GameObject[] modelObjects;
-    public string[] modelIds;
+    // Wired by SceneBuilder.
+    public Renderer characterRenderer;      // the humanoid's SkinnedMeshRenderer
+    public Texture2D[] skinTextures;
+    public string[] skinTextureIds;         // parallel to skinTextures (PNG name = SkinDef.Texture)
     public TrailRenderer trail;
     public ParticleSystem effectParticles;
-    public ParticleSystem skinAura;   // themed aura tied to the equipped skin (fire/ice/...)
+    public ParticleSystem skinAura;
     public PlayerController playerController;
 
     private readonly NetworkVariable<FixedString32Bytes> equippedSkin = new NetworkVariable<FixedString32Bytes>(
@@ -24,46 +22,25 @@ public class PlayerCosmetics : NetworkBehaviour
     private readonly NetworkVariable<FixedString32Bytes> equippedEffect = new NetworkVariable<FixedString32Bytes>(
         default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
-    private Material[][] modelMaterials;   // per-model per-instance material clones
-    private Animator[] modelAnimators;
-    private int activeModel = -1;
+    private Material charMat;
 
     void Awake()
     {
-        CacheModels();
+        CacheMaterial();
     }
 
-    void CacheModels()
+    void CacheMaterial()
     {
-        if (modelMaterials != null || modelObjects == null)
+        if (charMat != null || characterRenderer == null)
             return;
-
-        modelMaterials = new Material[modelObjects.Length][];
-        modelAnimators = new Animator[modelObjects.Length];
-        for (int i = 0; i < modelObjects.Length; i++)
-        {
-            if (modelObjects[i] == null)
-            {
-                modelMaterials[i] = new Material[0];
-                continue;
-            }
-
-            modelAnimators[i] = modelObjects[i].GetComponent<Animator>();
-            var renderers = modelObjects[i].GetComponentsInChildren<Renderer>(true);
-            var mats = new Material[renderers.Length];
-            for (int r = 0; r < renderers.Length; r++)
-            {
-                // Per-instance clone so recoloring one player never tints the others.
-                mats[r] = new Material(renderers[r].sharedMaterial);
-                renderers[r].material = mats[r];
-            }
-            modelMaterials[i] = mats;
-        }
+        // Per-instance clone so re-texturing one player never changes the others.
+        charMat = new Material(characterRenderer.sharedMaterial);
+        characterRenderer.material = charMat;
     }
 
     public override void OnNetworkSpawn()
     {
-        CacheModels();
+        CacheMaterial();
 
         equippedSkin.OnValueChanged += (_, v) => ApplySkin(v.ToString());
         equippedEffect.OnValueChanged += (_, v) => ApplyEffect(v.ToString());
@@ -89,36 +66,30 @@ public class PlayerCosmetics : NetworkBehaviour
 
     void ApplySkin(string skinId)
     {
-        if (modelObjects == null || modelObjects.Length == 0)
+        if (charMat == null)
             return;
 
         CosmeticsCatalog.TryGetSkin(skinId, out SkinDef skin);
-        int index = FindModel(skin.Model);
 
-        // Swap the active character model + retarget the animator.
-        if (index != activeModel)
+        Texture2D tex = FindTexture(skin.Texture);
+        if (tex != null)
         {
-            for (int i = 0; i < modelObjects.Length; i++)
-                if (modelObjects[i] != null)
-                    modelObjects[i].SetActive(i == index);
-            activeModel = index;
-
-            if (playerController != null && modelAnimators[index] != null)
-                playerController.animator = modelAnimators[index];
+            if (charMat.HasProperty("_BaseMap")) charMat.SetTexture("_BaseMap", tex);
+            if (charMat.HasProperty("_MainTex")) charMat.SetTexture("_MainTex", tex);
         }
+        Color tint = skin.Tint.a <= 0f ? Color.white : skin.Tint;
+        if (charMat.HasProperty("_BaseColor")) charMat.SetColor("_BaseColor", tint);
 
-        // Recolor the active model + drive its themed aura.
-        CosmeticApplier.ApplySkin(modelMaterials[index], skinId);
         CosmeticApplier.ApplyAura(skinAura, skin.AuraTheme);
     }
 
-    int FindModel(string modelId)
+    Texture2D FindTexture(string texName)
     {
-        if (!string.IsNullOrEmpty(modelId) && modelIds != null)
-            for (int i = 0; i < modelIds.Length; i++)
-                if (modelIds[i] == modelId)
-                    return i;
-        return 0; // default to the first (base) model
+        if (!string.IsNullOrEmpty(texName) && skinTextureIds != null)
+            for (int i = 0; i < skinTextureIds.Length; i++)
+                if (skinTextureIds[i] == texName && i < skinTextures.Length)
+                    return skinTextures[i];
+        return skinTextures != null && skinTextures.Length > 0 ? skinTextures[0] : null;
     }
 
     void ApplyEffect(string effectId) => CosmeticApplier.ApplyEffect(trail, effectParticles, effectId);

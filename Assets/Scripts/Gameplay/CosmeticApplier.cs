@@ -5,36 +5,24 @@ using UnityEngine;
 // visual: skin recolors a set of per-instance materials, effect drives a trail + particle system.
 public static class CosmeticApplier
 {
-    public static void ApplySkin(Material[] skinMaterials, string skinId)
+    // Applies a character texture (+ optional tint) to a set of material instances - a skin is a
+    // whole different character look, not a recolor.
+    public static void ApplySkinTexture(Material[] mats, Texture2D texture, Color tint)
     {
-        if (skinMaterials == null)
+        if (mats == null)
             return;
-        if (!CosmeticsCatalog.TryGetSkin(skinId, out SkinDef skin))
-            return;
-
-        foreach (var mat in skinMaterials)
+        Color t = tint.a <= 0f ? Color.white : tint;
+        foreach (var mat in mats)
         {
             if (mat == null)
                 continue;
-
-            if (mat.HasProperty("_BaseColor"))
-                mat.SetColor("_BaseColor", skin.BaseColor);
-            if (mat.HasProperty("_Color"))
-                mat.SetColor("_Color", skin.BaseColor);
-
-            if (skin.HasEmission)
+            if (texture != null)
             {
-                mat.EnableKeyword("_EMISSION");
-                mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-                if (mat.HasProperty("_EmissionColor"))
-                    mat.SetColor("_EmissionColor", skin.EmissionColor);
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", texture);
+                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", texture);
             }
-            else
-            {
-                mat.DisableKeyword("_EMISSION");
-                if (mat.HasProperty("_EmissionColor"))
-                    mat.SetColor("_EmissionColor", Color.black);
-            }
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", t);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", t);
         }
     }
 
