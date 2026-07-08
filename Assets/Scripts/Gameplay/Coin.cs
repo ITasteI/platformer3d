@@ -16,7 +16,8 @@ public class Coin : MonoBehaviour
     public float spinSpeed = 90f;
     public float bobHeight = 0.25f;
     public float bobSpeed = 2f;
-    public float respawnSeconds = 10f;
+    // Longer respawn so coins can't be farmed as fast - earning cosmetics should take a while.
+    public float respawnSeconds = 20f;
     // Set once by SceneBuilder right after instantiation, before Awake's first frame runs.
     [HideInInspector] public float legendaryBaseScale = 1f;
 
@@ -35,6 +36,8 @@ public class Coin : MonoBehaviour
     private Collider col;
     private Renderer[] renderers;
     private bool collected;
+    private int perfSeed;   // staggers the distance checks across frames
+    private bool farAway;
 
     void Awake()
     {
@@ -42,6 +45,8 @@ public class Coin : MonoBehaviour
         col.isTrigger = true;
         renderers = GetComponentsInChildren<Renderer>();
         startPos = transform.position;
+        // Position-derived stagger seed (GetInstanceID is deprecated in Unity 6).
+        perfSeed = (Mathf.RoundToInt(transform.position.x * 3f) ^ Mathf.RoundToInt(transform.position.y * 3f)) & 15;
 
         if (type == CoinType.Rare)
         {
@@ -65,6 +70,16 @@ public class Coin : MonoBehaviour
         // Skip all animation while collected/hidden - the coin is invisible and non-interactive
         // during its respawn wait, so there's nothing to spin or bob.
         if (collected)
+            return;
+
+        // Perf: coins beyond ~60 m don't animate (fog hides them; ~550 coins tick in Endless).
+        // The distance check itself is staggered so only 1/16 of coins measure per frame.
+        if ((Time.frameCount + perfSeed) % 16 == 0)
+        {
+            var p = GameManager.Instance != null ? GameManager.Instance.player : null;
+            farAway = p != null && (transform.position - p.position).sqrMagnitude > 3600f;
+        }
+        if (farAway)
             return;
 
         transform.Rotate(Vector3.up, spinSpeed * Time.deltaTime, Space.World);
@@ -94,6 +109,10 @@ public class Coin : MonoBehaviour
         EconomySystem.AddCoins(value);
         AudioManager.Instance?.PlayCoin();
         EffectsManager.Instance?.PlaySparkle(transform.position);
+        // Legendary coins are a lucky roadside find, not a hidden secret - "ms_secret" stays
+        // exclusive to the glide-only SecretShards so that achievement keeps its meaning.
+        if (type == CoinType.Legendary)
+            MilestoneTracker.Instance?.Unlock("ms_lucky", "Glücksfund - legendäre Münze!");
 
         // Instead of destroying, hide + disable and respawn after a delay so coins can be farmed.
         StartCoroutine(RespawnRoutine());

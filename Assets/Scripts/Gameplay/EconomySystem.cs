@@ -14,6 +14,10 @@ class EconomyData
     public List<string> ownedEffects = new List<string> { "none" };
     public string equippedSkin = "adventurer";
     public string equippedEffect = "none";
+    // Third cosmetic slot: action-bound particle tints. New fields default via the initializers,
+    // so existing economy.json files load seamlessly.
+    public List<string> ownedFx = new List<string> { "none" };
+    public string equippedFx = "none";
 }
 
 public static class EconomySystem
@@ -28,7 +32,36 @@ public static class EconomySystem
     public static int Coins => Data.coins;
     public static int TotalCoinsEarned => Data.totalCoinsEarned;
     public static string EquippedSkin => Data.equippedSkin;
-    public static string EquippedEffect => Data.equippedEffect;
+    // The second cosmetic bucket now holds ACCESSORIES (was particle effects). The JSON field name
+    // stays "equippedEffect"/"ownedEffects" so existing save files keep loading; "none" is valid for
+    // both, so the transition is seamless.
+    public static string EquippedAccessory => Data.equippedEffect;
+
+    // ---- Third cosmetic slot: action effects (particle tints) --------------------------------
+    public static string EquippedActionFx => Data.equippedFx ?? "none";
+
+    public static bool IsOwnedFx(string id) => Data.ownedFx != null && Data.ownedFx.Contains(id);
+
+    public static bool TryPurchaseFx(string id, int price)
+    {
+        if (IsOwnedFx(id))
+            return true;
+        if (Data.coins < price)
+            return false;
+        Data.coins -= price;
+        (Data.ownedFx ??= new List<string> { "none" }).Add(id);
+        Save();
+        return true;
+    }
+
+    public static void EquipFx(string id)
+    {
+        if (!IsOwnedFx(id))
+            return;
+        Data.equippedFx = id;
+        Save();
+        EffectsManager.RefreshFxTint();
+    }
 
     static EconomyData Data
     {

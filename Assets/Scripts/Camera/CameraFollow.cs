@@ -24,6 +24,18 @@ public class CameraFollow : MonoBehaviour
         PlayerPrefs.SetFloat(SensitivityPrefKey, cachedSensitivity);
     }
 
+    // Player-configurable field of view (Settings > Grafik), persisted and applied to this camera.
+    const string FovPrefKey = "CameraFov";
+
+    public static void SetFov(float value)
+    {
+        value = Mathf.Clamp(value, 50f, 90f);
+        PlayerPrefs.SetFloat(FovPrefKey, value);
+        if (Camera.main != null)
+            Camera.main.fieldOfView = value;
+    }
+
+
     public Transform target;
     public float distance = 6f;
     public float height = 2.5f;
@@ -39,6 +51,13 @@ public class CameraFollow : MonoBehaviour
 
     private float yaw;
     private float pitch = 20f;
+
+    // The intended orbit yaw (driven only by the mouse). Movement direction MUST use this, not the
+    // camera transform's eulerAngles.y: the transform is positioned with damping and then LookAt(target),
+    // so while the player moves, the camera's facing lags sideways. Feeding that lagging yaw back into
+    // camera-relative WASD rotates the input every frame and curves the player into a fast circle
+    // (positive feedback). This value has no lag, so movement stays straight.
+    public float Yaw => yaw;
     private Vector3 velocity;
     private float currentDistance;
     private float distanceVelocity;
@@ -50,6 +69,11 @@ public class CameraFollow : MonoBehaviour
         if (target != null)
             yaw = target.eulerAngles.y;
         currentDistance = distance;
+
+        // Apply the saved FOV setting (Settings > Grafik) to this camera.
+        var cam = GetComponent<Camera>();
+        if (cam != null && PlayerPrefs.HasKey(FovPrefKey))
+            cam.fieldOfView = Mathf.Clamp(PlayerPrefs.GetFloat(FovPrefKey, cam.fieldOfView), 50f, 90f);
     }
 
     void Update()

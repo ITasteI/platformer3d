@@ -18,28 +18,41 @@ public struct SkinDef
     public string AuraTheme;
 }
 
-public struct EffectDef
+// The equippable head accessory kinds (built procedurally in CosmeticApplier). Replaces the old
+// particle "effects" - a worn cosmetic that sits on the character instead of distracting trails.
+public enum AccessoryKind { None, TopHat, Cap, Crown, PartyHat, WizardHat, Helmet, Halo }
+
+public struct AccessoryDef
 {
     public string Id;
     public string Name;
     public int Price;
-    public Color ColorA;
-    public Color ColorB;
+    public AccessoryKind Kind;
+    public Color Color;   // main color
+    public Color Color2;  // accent/trim color
+}
 
-    // Per-effect look so each one reads as a genuinely different reward.
-    public float TrailWidth;      // 0 = no trail
-    public float TrailTime;       // trail length in seconds
-    public float ParticleRate;    // 0 = no particles
-    public float ParticleSize;
-    public float ParticleSpeed;
-    public float ParticleGravity; // negative = rises, positive = falls
-    public float ParticleLife;
+// An action-bound particle tint (third cosmetic slot) - see CosmeticsCatalog.ActionFx.
+public struct ActionFxDef
+{
+    public string Id;
+    public string Name;
+    public int Price;
+    public Color Color;
+}
 
-    // New distinctiveness dimensions: emission shape, spin, size-over-life and additive glow.
-    public ParticleSystemShapeType Shape; // emission pattern (cone/sphere/circle/hemisphere)
-    public float SpinDegPerSec;           // particle rotation over life (crackle/swirl)
-    public float EndSizeMul;              // size at end of life (1 = constant, <1 shrink, >1 grow)
-    public bool Additive;                 // glowing (additive) vs soft (alpha) particles
+// Item rarity, derived from price - drives the coloured stripes/labels in the shop so the
+// catalogue reads as a real progression ladder instead of a flat list.
+public static class Rarity
+{
+    public static (string Name, Color Color) For(int price)
+    {
+        if (price <= 0) return ("Standard", new Color(0.62f, 0.67f, 0.78f));
+        if (price < 500) return ("Gewöhnlich", new Color(0.55f, 0.82f, 0.55f));
+        if (price < 1200) return ("Selten", new Color(0.42f, 0.7f, 1f));
+        if (price < 2200) return ("Episch", new Color(0.76f, 0.52f, 1f));
+        return ("Legendär", new Color(1f, 0.82f, 0.35f));
+    }
 }
 
 // All prices/colors for the shop live here in one place - purely cosmetic, no gameplay effect.
@@ -50,46 +63,57 @@ public static class CosmeticsCatalog
     {
         // Real, distinct humanoid characters (Kenney "Animated Characters Protagonists"), unlocked
         // with coins. Each is a different look, not a recolor. Premium ones add a themed aura.
+        // Prices raised: the economy gained many new sources (boss bounties, chest islands,
+        // daily/weekly challenges, run bonus) - cosmetics should stay a long-term goal.
         new SkinDef { Id = "adventurer", Name = "Abenteurer", Price = 0, Texture = "skaterMaleA" },
-        new SkinDef { Id = "explorer", Name = "Entdeckerin", Price = 150, Texture = "skaterFemaleA" },
-        new SkinDef { Id = "rogue", Name = "Schurke", Price = 400, Texture = "criminalMaleA", AuraTheme = "shadow" },
-        new SkinDef { Id = "cyborg", Name = "Cyborg", Price = 800, Texture = "cyborgFemaleA", AuraTheme = "lightning" },
+        new SkinDef { Id = "explorer", Name = "Entdeckerin", Price = 400, Texture = "skaterFemaleA" },
+        // Auras removed on request - these were the leftover particle "effects" baked into the skins.
+        new SkinDef { Id = "rogue", Name = "Schurke", Price = 1000, Texture = "criminalMaleA" },
+        new SkinDef { Id = "cyborg", Name = "Cyborg", Price = 2000, Texture = "cyborgFemaleA" },
     };
 
-    public static readonly EffectDef[] Effects =
+    // Wearable head accessories (built procedurally, sit on the character's head). Unlocked with
+    // coins. Purely cosmetic, non-intrusive - no view-blocking particles.
+    public static readonly AccessoryDef[] Accessories =
     {
-        new EffectDef { Id = "none", Name = "Kein Effekt", Price = 0 },
-
-        // Fire: cone of glowing embers that rise and shrink, wide warm trail.
-        new EffectDef { Id = "fire", Name = "Feuer", Price = 100, ColorA = new Color(1f, 0.7f, 0.15f), ColorB = new Color(0.9f, 0.1f, 0f),
-            TrailWidth = 0.42f, TrailTime = 0.4f, ParticleRate = 40f, ParticleSize = 0.24f, ParticleSpeed = 1.9f, ParticleGravity = -0.6f, ParticleLife = 0.7f,
-            Shape = ParticleSystemShapeType.Cone, SpinDegPerSec = 40f, EndSizeMul = 0.15f, Additive = true },
-
-        // Ice: soft snow that drifts down slowly and lingers, thin cool trail.
-        new EffectDef { Id = "ice", Name = "Eis", Price = 100, ColorA = new Color(0.8f, 0.97f, 1f), ColorB = new Color(0.3f, 0.6f, 0.95f),
-            TrailWidth = 0.28f, TrailTime = 0.6f, ParticleRate = 22f, ParticleSize = 0.14f, ParticleSpeed = 0.4f, ParticleGravity = 0.6f, ParticleLife = 1.6f,
-            Shape = ParticleSystemShapeType.Sphere, SpinDegPerSec = 0f, EndSizeMul = 0.7f, Additive = false },
-
-        // Lightning: tight cone of fast, tiny, spinning bright sparks, very short thin trail.
-        new EffectDef { Id = "lightning", Name = "Blitz", Price = 200, ColorA = new Color(1f, 1f, 0.6f), ColorB = new Color(0.7f, 0.85f, 1f),
-            TrailWidth = 0.13f, TrailTime = 0.18f, ParticleRate = 55f, ParticleSize = 0.09f, ParticleSpeed = 3.6f, ParticleGravity = 0f, ParticleLife = 0.3f,
-            Shape = ParticleSystemShapeType.Cone, SpinDegPerSec = 720f, EndSizeMul = 0.05f, Additive = true },
-
-        // Rainbow: big soft multicolour puffs that grow, broad trail.
-        new EffectDef { Id = "rainbow", Name = "Regenbogen", Price = 400, ColorA = new Color(1f, 0.25f, 0.3f), ColorB = new Color(0.3f, 0.5f, 1f),
-            TrailWidth = 0.48f, TrailTime = 0.75f, ParticleRate = 24f, ParticleSize = 0.28f, ParticleSpeed = 0.8f, ParticleGravity = 0f, ParticleLife = 1.2f,
-            Shape = ParticleSystemShapeType.Sphere, SpinDegPerSec = 30f, EndSizeMul = 1.8f, Additive = false },
-
-        // Stars: sparse, large, slow twinkles from a hemisphere, thin trail, glowing.
-        new EffectDef { Id = "stars", Name = "Sterne", Price = 550, ColorA = new Color(1f, 1f, 0.9f), ColorB = new Color(0.6f, 0.4f, 1f),
-            TrailWidth = 0.16f, TrailTime = 0.6f, ParticleRate = 10f, ParticleSize = 0.3f, ParticleSpeed = 0.3f, ParticleGravity = -0.05f, ParticleLife = 1.9f,
-            Shape = ParticleSystemShapeType.Hemisphere, SpinDegPerSec = 90f, EndSizeMul = 0.2f, Additive = true },
-
-        // Galaxy: dense swirling dust from an orbital circle, deep purple broad trail, glowing.
-        new EffectDef { Id = "galaxy", Name = "Galaxy", Price = 750, ColorA = new Color(0.7f, 0.2f, 1f), ColorB = new Color(0.15f, 0.4f, 0.95f),
-            TrailWidth = 0.4f, TrailTime = 0.85f, ParticleRate = 48f, ParticleSize = 0.17f, ParticleSpeed = 1.2f, ParticleGravity = 0f, ParticleLife = 1.3f,
-            Shape = ParticleSystemShapeType.Circle, SpinDegPerSec = 300f, EndSizeMul = 0.6f, Additive = true },
+        new AccessoryDef { Id = "none", Name = "Kein Accessoire", Price = 0, Kind = AccessoryKind.None },
+        new AccessoryDef { Id = "cap", Name = "Cap", Price = 300, Kind = AccessoryKind.Cap,
+            Color = new Color(0.85f, 0.2f, 0.25f), Color2 = new Color(0.7f, 0.15f, 0.2f) },
+        new AccessoryDef { Id = "party", Name = "Partyhut", Price = 500, Kind = AccessoryKind.PartyHat,
+            Color = new Color(1f, 0.35f, 0.6f), Color2 = new Color(1f, 0.9f, 0.3f) },
+        new AccessoryDef { Id = "tophat", Name = "Zylinder", Price = 800, Kind = AccessoryKind.TopHat,
+            Color = new Color(0.09f, 0.09f, 0.12f), Color2 = new Color(0.7f, 0.15f, 0.2f) },
+        new AccessoryDef { Id = "helmet", Name = "Wikingerhelm", Price = 1200, Kind = AccessoryKind.Helmet,
+            Color = new Color(0.62f, 0.66f, 0.72f), Color2 = new Color(0.9f, 0.85f, 0.7f) },
+        new AccessoryDef { Id = "wizard", Name = "Zauberhut", Price = 1600, Kind = AccessoryKind.WizardHat,
+            Color = new Color(0.28f, 0.2f, 0.55f), Color2 = new Color(1f, 0.85f, 0.3f) },
+        new AccessoryDef { Id = "crown", Name = "Krone", Price = 2200, Kind = AccessoryKind.Crown,
+            Color = new Color(1f, 0.82f, 0.25f), Color2 = new Color(0.9f, 0.3f, 0.4f) },
+        new AccessoryDef { Id = "halo", Name = "Heiligenschein", Price = 2800, Kind = AccessoryKind.Halo,
+            Color = new Color(1f, 0.92f, 0.5f), Color2 = new Color(1f, 0.85f, 0.3f) },
     };
+
+    // The third cosmetic slot: ACTION EFFECTS. Purely visual tints applied to the player's own
+    // action particles (jump ring, dash streak, landing dust, footstep puffs) - bound to actions,
+    // never floating around the character, so they can't obstruct the view.
+    public static readonly ActionFxDef[] ActionFx =
+    {
+        new ActionFxDef { Id = "none",   Name = "Kein Effekt",   Price = 0,    Color = Color.white },
+        new ActionFxDef { Id = "fire",   Name = "Feuerspur",     Price = 600,  Color = new Color(1f, 0.45f, 0.15f) },
+        new ActionFxDef { Id = "frost",  Name = "Frostspur",     Price = 1000, Color = new Color(0.45f, 0.85f, 1f) },
+        new ActionFxDef { Id = "nature", Name = "Naturpfad",     Price = 1500, Color = new Color(0.45f, 1f, 0.5f) },
+        new ActionFxDef { Id = "star",   Name = "Sternenglanz",  Price = 2200, Color = new Color(1f, 0.85f, 0.35f) },
+    };
+
+    public static bool TryGetActionFx(string id, out ActionFxDef fx)
+    {
+        foreach (var f in ActionFx)
+        {
+            if (f.Id == id) { fx = f; return true; }
+        }
+        fx = ActionFx[0];
+        return false;
+    }
 
     public static bool TryGetSkin(string id, out SkinDef skin)
     {
@@ -101,13 +125,13 @@ public static class CosmeticsCatalog
         return false;
     }
 
-    public static bool TryGetEffect(string id, out EffectDef effect)
+    public static bool TryGetAccessory(string id, out AccessoryDef accessory)
     {
-        foreach (var e in Effects)
+        foreach (var a in Accessories)
         {
-            if (e.Id == id) { effect = e; return true; }
+            if (a.Id == id) { accessory = a; return true; }
         }
-        effect = Effects[0];
+        accessory = Accessories[0];
         return false;
     }
 }

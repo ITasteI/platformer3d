@@ -12,17 +12,17 @@ public class PlayerCosmetics : NetworkBehaviour
     public Renderer characterRenderer;      // the humanoid's SkinnedMeshRenderer
     public Texture2D[] skinTextures;
     public string[] skinTextureIds;         // parallel to skinTextures (PNG name = SkinDef.Texture)
-    public TrailRenderer trail;
-    public ParticleSystem effectParticles;
+    public Transform accessoryAnchor;       // sits at the head; worn accessories attach here
     public ParticleSystem skinAura;
     public PlayerController playerController;
 
     private readonly NetworkVariable<FixedString32Bytes> equippedSkin = new NetworkVariable<FixedString32Bytes>(
         default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
-    private readonly NetworkVariable<FixedString32Bytes> equippedEffect = new NetworkVariable<FixedString32Bytes>(
+    private readonly NetworkVariable<FixedString32Bytes> equippedAccessory = new NetworkVariable<FixedString32Bytes>(
         default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     private Material charMat;
+    private GameObject currentAccessory;
 
     void Awake()
     {
@@ -43,25 +43,25 @@ public class PlayerCosmetics : NetworkBehaviour
         CacheMaterial();
 
         equippedSkin.OnValueChanged += (_, v) => ApplySkin(v.ToString());
-        equippedEffect.OnValueChanged += (_, v) => ApplyEffect(v.ToString());
+        equippedAccessory.OnValueChanged += (_, v) => ApplyAccessory(v.ToString());
 
         if (IsOwner)
         {
             equippedSkin.Value = EconomySystem.EquippedSkin;
-            equippedEffect.Value = EconomySystem.EquippedEffect;
+            equippedAccessory.Value = EconomySystem.EquippedAccessory;
         }
 
         ApplySkin(equippedSkin.Value.ToString());
-        ApplyEffect(equippedEffect.Value.ToString());
+        ApplyAccessory(equippedAccessory.Value.ToString());
     }
 
     // Called by the shop (owner only) so the change takes effect live and syncs to others.
-    public void SetEquipped(string skinId, string effectId)
+    public void SetEquipped(string skinId, string accessoryId)
     {
         if (!IsOwner)
             return;
         equippedSkin.Value = skinId;
-        equippedEffect.Value = effectId;
+        equippedAccessory.Value = accessoryId;
     }
 
     void ApplySkin(string skinId)
@@ -92,5 +92,26 @@ public class PlayerCosmetics : NetworkBehaviour
         return skinTextures != null && skinTextures.Length > 0 ? skinTextures[0] : null;
     }
 
-    void ApplyEffect(string effectId) => CosmeticApplier.ApplyEffect(trail, effectParticles, effectId);
+    void ApplyAccessory(string accessoryId)
+    {
+        if (currentAccessory != null)
+            Destroy(currentAccessory);
+
+        CosmeticsCatalog.TryGetAccessory(accessoryId, out AccessoryDef def);
+        currentAccessory = CosmeticApplier.BuildAccessory(def);
+        if (currentAccessory != null && accessoryAnchor != null)
+        {
+            currentAccessory.transform.SetParent(accessoryAnchor, false);
+            currentAccessory.transform.localPosition = Vector3.zero;
+            currentAccessory.transform.localRotation = Quaternion.identity;
+            SetLayerRecursive(currentAccessory, accessoryAnchor.gameObject.layer);
+        }
+    }
+
+    static void SetLayerRecursive(GameObject go, int layer)
+    {
+        go.layer = layer;
+        foreach (Transform child in go.transform)
+            SetLayerRecursive(child.gameObject, layer);
+    }
 }

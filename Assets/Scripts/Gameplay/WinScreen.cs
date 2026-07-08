@@ -7,9 +7,24 @@ public class WinScreen : MonoBehaviour
 
     public static void ClearWon() => HasWon = false;
 
+    public const int RunBonus = 300; // coins awarded for finishing a run
+
+    // Cached GUI styles (avoid per-frame allocations while the win screen is up).
+    private static GUIStyle bonusStyle, deathStyle;
+
     private float finishTime;
     private bool isNewBest;
     private float bestTime;
+    private int finishDeaths;
+    private bool timedOut;
+    private bool hardcoreDeath;
+    private float finishHeight;
+
+    static float PlayerHeight()
+    {
+        var gm = GameManager.Instance;
+        return gm != null && gm.player != null ? Mathf.Max(0f, gm.player.position.y) : 0f;
+    }
 
     void Awake()
     {
@@ -25,51 +40,117 @@ public class WinScreen : MonoBehaviour
             return;
 
         HasWon = true;
+        timedOut = false;
         finishTime = GameManager.Instance != null ? GameManager.Instance.PlayTime : 0f;
+        finishDeaths = GameManager.Instance != null ? GameManager.Instance.RunDeaths : 0;
+        finishHeight = PlayerHeight();
+        if (finishDeaths == 0)
+            MilestoneTracker.Instance?.Unlock("ms_nodeath", "Gipfel ohne einen einzigen Tod!");
 
-        SaveData previous = SaveSystem.Load();
-        bestTime = previous != null && previous.bestTime >= 0f ? previous.bestTime : -1f;
+        // Completion bonus.
+        GameManager.Instance?.AddCoins(RunBonus);
+        EconomySystem.AddCoins(RunBonus);
+        WeeklyChallenge.NoteWin();
+
+        // Best times are tracked PER MODE - a Zeitrennen win no longer overwrites the Klassisch record.
+        bestTime = SaveSystem.BestTime(GameModeState.Current);
         isNewBest = bestTime < 0f || finishTime < bestTime;
-        SaveSystem.SaveBestTime(finishTime);
+        SaveSystem.SaveBestTime(GameModeState.Current, finishTime);
         if (isNewBest)
             bestTime = finishTime;
-
-        // Persist this run as the ghost to race against, but only if it beat the previous best.
-        GhostRunner.Instance?.OnWin(isNewBest);
 
         AudioManager.Instance?.PlayVictory();
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }
 
+    // Fired by GameManager when the Zeitrennen countdown runs out before you reach the flag.
+    public void TriggerTimeUp()
+    {
+        if (HasWon)
+            return;
+        HasWon = true;
+        timedOut = true;
+        hardcoreDeath = false;
+        finishTime = GameModeState.TimeAttackLimit;
+        finishDeaths = GameManager.Instance != null ? GameManager.Instance.RunDeaths : 0;
+        finishHeight = PlayerHeight();
+        AudioManager.Instance?.PlayDeath();
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
+    // Hardcore: the ONE life is spent - the run ends where you died.
+    public void TriggerGameOver()
+    {
+        if (HasWon)
+            return;
+        HasWon = true;
+        timedOut = true;      // reuses the "run over" layout below
+        hardcoreDeath = true;
+        finishTime = GameManager.Instance != null ? GameManager.Instance.PlayTime : 0f;
+        finishDeaths = 1;
+        finishHeight = PlayerHeight();
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
     void OnGUI()
     {
+        UITheme.BeginUI();
         if (!HasWon)
+            return;
+        // The escape menu draws on top of everything - hide this screen while any menu is open,
+        // so the two never fight over the same clicks (made the game-over dialog feel "stuck").
+        if (MainMenu.IsBlockingGameplay)
             return;
 
         UITheme.EnsureInit();
 
         float w = 380f;
         float h = 300f;
-        float x = (Screen.width - w) / 2f;
-        float y = (Screen.height - h) / 2f;
+        float x = (UITheme.ScreenW - w) / 2f;
+        float y = (UITheme.ScreenH - h) / 2f;
 
-        GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
-        GUI.Label(new Rect(x, y + 15, w, 45), "Geschafft!", UITheme.TitleStyle);
-
-        int minutes = Mathf.FloorToInt(finishTime / 60f);
-        int seconds = Mathf.FloorToInt(finishTime % 60f);
-        GUI.Label(new Rect(x + 20, y + 75, w - 40, 25), $"Zeit: {minutes:00}:{seconds:00}", UITheme.LabelStyle);
-
-        int bestMinutes = Mathf.FloorToInt(bestTime / 60f);
-        int bestSeconds = Mathf.FloorToInt(bestTime % 60f);
-        string bestLabel = isNewBest ? "Neue Bestzeit!" : $"Bestzeit: {bestMinutes:00}:{bestSeconds:00}";
-        GUI.Label(new Rect(x + 20, y + 100, w - 40, 25), bestLabel, UITheme.LabelStyle);
+        MainMenu.DrawScreenChrome(new Rect(x, y, w, h),
+            hardcoreDeath ? "Gestorben!" : (timedOut ? "Zeit abgelaufen!" : "Geschafft!"));
 
         int coins = GameManager.Instance != null ? GameManager.Instance.CoinCount : 0;
-        GUI.Label(new Rect(x + 20, y + 125, w - 40, 25), $"Shards: {coins}", UITheme.LabelStyle);
+        if (timedOut)
+        {
+            GUI.Label(new Rect(x + 20, y + 75, w - 40, 25), $"Höhe erreicht: {finishHeight:0} m", UITheme.LabelStyle);
+            GUI.Label(new Rect(x + 20, y + 100, w - 40, 25),
+                hardcoreDeath ? "Hardcore: ein Leben - der Lauf ist vorbei." : "Die Zeit war abgelaufen - versuch's nochmal!",
+                UITheme.LabelStyle);
+            GUI.Label(new Rect(x + 20, y + 125, w - 40, 25), $"Münzen: {coins}", UITheme.LabelStyle);
+        }
+        else
+        {
+            int minutes = Mathf.FloorToInt(finishTime / 60f);
+            int seconds = Mathf.FloorToInt(finishTime % 60f);
+            GUI.Label(new Rect(x + 20, y + 75, w - 40, 25), $"Zeit: {minutes:00}:{seconds:00}", UITheme.LabelStyle);
 
-        if (GUI.Button(new Rect(x + 30, y + 190, w - 60, 40), "Neu starten", UITheme.ButtonStyle))
+            int bestMinutes = Mathf.FloorToInt(bestTime / 60f);
+            int bestSeconds = Mathf.FloorToInt(bestTime % 60f);
+            string bestLabel = isNewBest ? "Neue Bestzeit!" : $"Bestzeit: {bestMinutes:00}:{bestSeconds:00}";
+            GUI.Label(new Rect(x + 20, y + 100, w - 40, 25), bestLabel, UITheme.LabelStyle);
+
+            if (bonusStyle == null)
+            {
+                bonusStyle = new GUIStyle(UITheme.LabelStyle);
+                bonusStyle.normal.textColor = UITheme.Gold;
+            }
+            GUI.Label(new Rect(x + 20, y + 125, w - 40, 25), $"Münzen: {coins}   (+{RunBonus} Abschluss-Bonus!)", bonusStyle);
+        }
+
+        if (deathStyle == null)
+            deathStyle = new GUIStyle(UITheme.LabelStyle);
+        deathStyle.normal.textColor = finishDeaths == 0 ? UITheme.Gold : UITheme.Ink;
+        GUI.Label(new Rect(x + 20, y + 150, w - 40, 25),
+            finishDeaths == 0 ? "Tode: 0 — ohne einen Tod! ⭐" : $"Tode: {finishDeaths}", deathStyle);
+
+        if (GUI.Button(new Rect(x + 30, y + 190, w - 60, 40),
+                hardcoreDeath ? "Nochmal versuchen" : "Neu starten", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             // In-place reset instead of SceneManager.LoadScene: reloading the scene while the

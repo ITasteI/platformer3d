@@ -111,6 +111,7 @@ public class LobbyBootstrap : MonoBehaviour
 
     void OnGUI()
     {
+        UITheme.BeginUI();
         DrawToasts();
 
         if (MainMenu.Current != MenuScreen.Play)
@@ -121,45 +122,57 @@ public class LobbyBootstrap : MonoBehaviour
         Color prevColor = GUI.color;
         GUI.color = new Color(1f, 1f, 1f, MainMenu.FadeAlpha);
 
-        float w = 340f;
-        float h = 370f;
-        float x = (Screen.width - w) / 2f;
-        float y = (Screen.height - h) / 2f;
+        // Relay UI removed on request - co-op is LAN-only (plus solo), which is all that's used.
+        float w = 360f;
+        float h = 386f;
+        float x = (UITheme.ScreenW - w) / 2f;
+        float y = (UITheme.ScreenH - h) / 2f;
 
-        GUI.Box(new Rect(x, y, w, h), "", UITheme.PanelStyle);
-        GUI.Label(new Rect(x, y + 8, w, 28), "Multiplayer", UITheme.TitleStyle);
+        MainMenu.DrawScreenChrome(new Rect(x, y, w, h), "Spielmodus & Koop");
 
-        GUI.Label(new Rect(x + 20, y + 45, w - 40, 20), "LAN / direkte IP (nur selbes Netzwerk):", UITheme.LabelStyle);
-        ipAddress = GUI.TextField(new Rect(x + 20, y + 65, w - 40, 25), ipAddress);
+        // Mode selector (host/solo picks how to play the tower) - 2x2 grid, four modes.
+        GUI.Label(new Rect(x + 20, y + 58, w - 40, 18), "Modus:", UITheme.LabelStyle);
+        float mw = (w - 40f - 6f) / 2f;
+        DrawModeButton(new Rect(x + 20, y + 78, mw, 30), GameMode.Klassisch);
+        DrawModeButton(new Rect(x + 26 + mw, y + 78, mw, 30), GameMode.Zeitrennen);
+        DrawModeButton(new Rect(x + 20, y + 114, mw, 30), GameMode.Endlos);
+        DrawModeButton(new Rect(x + 26 + mw, y + 114, mw, 30), GameMode.Hardcore);
 
-        if (GUI.Button(new Rect(x + 20, y + 100, (w - 50) / 2, 30), "Hosten (LAN)", UITheme.ButtonStyle))
+        GUI.Label(new Rect(x + 20, y + 150, w - 40, 20), "LAN / direkte IP (nur selbes Netzwerk):", UITheme.LabelStyle);
+        ipAddress = GUI.TextField(new Rect(x + 20, y + 170, w - 40, 25), ipAddress);
+
+        if (GUI.Button(new Rect(x + 20, y + 205, (w - 50) / 2, 30), "Hosten (LAN)", UITheme.ButtonStyle))
             StartLanHost();
-        if (GUI.Button(new Rect(x + 30 + (w - 50) / 2, y + 100, (w - 50) / 2, 30), "Beitreten", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 30 + (w - 50) / 2, y + 205, (w - 50) / 2, 30), "Beitreten", UITheme.ButtonStyle))
             StartLanClient();
 
-        if (GUI.Button(new Rect(x + 20, y + 137, w - 40, 28), "Solo spielen", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 20, y + 242, w - 40, 28), "Solo spielen", UITheme.ButtonStyle))
             StartSolo();
 
-        GUI.Label(new Rect(x + 20, y + 173, w - 40, 20), "Relay-Code (für verschiedene Netzwerke/Internet):", UITheme.LabelStyle);
-        relayJoinCodeInput = GUI.TextField(new Rect(x + 20, y + 193, w - 40, 25), relayJoinCodeInput);
-
-        if (GUI.Button(new Rect(x + 20, y + 225, (w - 50) / 2, 28), "Relay hosten", UITheme.ButtonStyle))
-            _ = StartRelayHost();
-        if (GUI.Button(new Rect(x + 30 + (w - 50) / 2, y + 225, (w - 50) / 2, 28), "Relay beitreten", UITheme.ButtonStyle))
-            _ = StartRelayJoin();
-
-        GUI.Label(new Rect(x + 20, y + 258, w - 40, 30), statusMessage, UITheme.LabelStyle);
+        GUI.Label(new Rect(x + 20, y + 278, w - 40, 30), statusMessage, UITheme.LabelStyle);
 
         var hintStyle = new GUIStyle(UITheme.LabelStyle) { fontSize = 11 };
-        GUI.Label(new Rect(x + 20, y + 288, w - 40, 32), "Hinweis: Shards werden pro Spieler getrennt gezählt.", hintStyle);
+        GUI.Label(new Rect(x + 20, y + 308, w - 40, 32), "Hinweis: Münzen werden pro Spieler getrennt gezählt.", hintStyle);
 
-        if (GUI.Button(new Rect(x + 20, y + 325, w - 40, 30), "↩ Zurück", UITheme.ButtonStyle))
+        if (GUI.Button(new Rect(x + 20, y + 344, w - 40, 30), "↩ Zurück", UITheme.ButtonStyle))
         {
             AudioManager.Instance?.PlayClick();
             MainMenu.SetScreen(MenuScreen.Main);
         }
 
         GUI.color = prevColor;
+    }
+
+    void DrawModeButton(Rect r, GameMode m)
+    {
+        bool sel = GameModeState.Current == m;
+        if (GUI.Button(r, GameModeState.Name(m), sel ? UITheme.TabActiveStyle : UITheme.TabStyle))
+        {
+            AudioManager.Instance?.PlayClick();
+            GameModeState.Current = m;
+            // Keep an existing save's mode in sync, so resuming doesn't flip back silently.
+            SaveSystem.UpdateSavedMode();
+        }
     }
 
     void DrawToasts()
@@ -183,7 +196,7 @@ public class LobbyBootstrap : MonoBehaviour
             float alpha = Mathf.Clamp01(toast.ExpiryTime - Time.time);
             Color prev = GUI.color;
             GUI.color = new Color(1f, 1f, 1f, alpha);
-            GUI.Box(new Rect(Screen.width - 260, y, 240, 32), toast.Message, UITheme.PanelStyle);
+            GUI.Box(new Rect(UITheme.ScreenW - 260, y, 240, 32), toast.Message, UITheme.PanelStyle);
             GUI.color = prev;
             y += 38f;
         }
